@@ -232,7 +232,13 @@ Game.Engine = (function () {
     if (!s.settings.showDamageNumbers) return;
     floatingTexts.push({ x, y, text, color: color || '#fff', size: size || 14, life: 1, vy: -0.6 });
   }
-
+function resetRun() {
+  activeBalls = [];
+  particles = [];
+  floatingTexts = [];
+  spawnTimers = {};
+  newLevel(false);
+}
   // ---------------- DAMAGE / DEATH ----------------
   function damageBrick(brick, amount, hitX, hitY, isMeteor) {
     if (!brick.alive) return;
@@ -513,7 +519,7 @@ Game.Engine = (function () {
   function getActiveBallCount(typeId) { return activeBalls.filter(a => a.typeId === typeId && !a.isFragment).length; }
 
   return {
-    init, start, stop, on, useSkill, skillCooldownRemaining,
-    getBricks, getActiveBallCount, newLevel, SFX
-  };
+  init, start, stop, on, useSkill, skillCooldownRemaining,
+  getBricks, getActiveBallCount, newLevel, resetRun, SFX
+};
 })();
