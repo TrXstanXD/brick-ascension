@@ -240,6 +240,20 @@ Game.UI = (function () {
       s = Game.State.get();
       renderAll();
     });
+    $('#prestige-btn').addEventListener('click', () => {
+  const gain = Game.State.gemsOnPrestige();
+  if (gain < 1) { 
+    alert('Earn more gold this run before ascending — you need enough progress to gain at least 1 Gem.'); 
+    return; 
+  }
+  if (!confirm(`Ascend now? You will reset gold, levels, and balls, but keep Gems and permanent upgrades. You will gain ${gain} Gem(s).`)) return;
+  
+  Game.Engine.SFX.prestige();
+  Game.State.doPrestige();
+  Game.Engine.resetRun(); // Clears all leftover balls/effects and resets level 1 bricks
+  s = Game.State.get();
+  renderAll();
+});
     $('#prestige-upgrades-list').innerHTML = '';
     Game.PRESTIGE_UPGRADES.forEach((u) => {
       const card = el('div', 'upgrade-card gem');
