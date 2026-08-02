@@ -1,22 +1,28 @@
 // ============================================================
-// MAIN.JS - Bootstraps the game once the DOM is ready
+// MAIN.JS - Entry point and bootstrapper
 // ============================================================
-(function () {
-  function boot() {
+window.Game = window.Game || {};
+
+function boot() {
+  console.warn('[DEBUG Main] Boot sequence started...');
+  
+  if (Game.State && typeof Game.State.init === 'function') {
     Game.State.init();
-    const offlineResult = Game._offlineResult || null;
-    Game.Engine.init(document.getElementById('game-canvas'));
+  }
+
+  if (Game.Engine && typeof Game.Engine.init === 'function') {
+    Game.Engine.init();
+  }
+
+  if (Game.UI && typeof Game.UI.init === 'function') {
     Game.UI.init();
-    Game.Engine.start();
-    if (offlineResult) Game.UI.reportOffline(offlineResult);
   }
 
-  // capture offline progress result before UI mounts (State.init already applied it)
-  const origInit = Game.State.applyOfflineProgress;
+  console.warn('[DEBUG Main] Boot sequence completed successfully.');
+}
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', boot);
-  } else {
-    boot();
-  }
-})();
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', boot);
+} else {
+  boot();
+}
