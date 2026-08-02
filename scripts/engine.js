@@ -4,7 +4,32 @@
 window.Game = window.Game || {};
 
 Game.Engine = (function () {
-  const U = Game.Util;
+  const U = Game.Util || {
+    clamp: (v, min, max) => Math.min(Math.max(v, min), max),
+    rand: (min, max) => Math.random() * (max - min) + min,
+    choice: (arr) => arr[Math.floor(Math.random() * arr.length)],
+    weightedChoice: (items) => {
+      let sum = items.reduce((a, b) => a + b.weight, 0);
+      let r = Math.random() * sum;
+      for (let i of items) {
+        if (r < i.weight) return i.value;
+        r -= i.weight;
+      }
+      return items[0].value;
+    },
+    circleRectCollide: (cx, cy, cr, rx, ry, rw, rh) => {
+      let testX = cx, testY = cy;
+      if (cx < rx) testX = rx;
+      else if (cx > rx + rw) testX = rx + rw;
+      if (cy < ry) testY = ry;
+      else if (cy > ry + rh) testY = ry + rh;
+      let distX = cx - testX, distY = cy - testY;
+      return (distX * distX + distY * distY) <= (cr * cr);
+    },
+    fmt: (v) => Math.floor(v),
+    lerp: (a, b, t) => a + (b - a) * t
+  };
+
   let canvas, ctx, W, H;
   let bricks = [];
   let activeBalls = [];
@@ -16,12 +41,24 @@ Game.Engine = (function () {
   let lastTime = 0;
   let gpsAccumulator = { gold: 0, time: 0 };
 
-  // callbacks the UI layer can hook into
+  // Helper fallbacks for state multipliers if not defined in state.js
+  function getStatMult(fnName, defVal) {
+    return (Game.State && typeof Game.State[fnName] === 'function') ? Game.State[fnName]() : defVal;
+  }
+
+  function addGold(amount) {
+    const s = Game.State.get();
+    s.gold = (s.gold || 0) + amount;
+    s.stats.totalGoldEarned = (s.stats.totalGoldEarned || 0) + amount;
+    return amount;
+  }
+
+  // Callbacks the UI layer can hook into
   const listeners = { levelUp: [], achievement: [], notify: [], goldGain: null };
   function on(event, fn) { if (listeners[event]) listeners[event].push(fn); }
   function emit(event, payload) { (listeners[event] || []).forEach(fn => fn(payload)); }
 
-  // ---------------- AUDIO (synthesized, no external files needed) ----------------
+  // ---------------- AUDIO (synthesized) ----------------
   let audioCtx = null;
   function ensureAudio() {
     if (!audioCtx) {
@@ -31,7 +68,7 @@ Game.Engine = (function () {
   }
   function beep(freq, dur, type, vol) {
     const s = Game.State.get();
-    if (!s.settings.sfxVolume) return;
+    if (!s.settings || !s.settings.sfxVolume) return;
     const ac = ensureAudio();
     if (!ac) return;
     const osc = ac.createOscillator();
@@ -55,17 +92,35 @@ Game.Engine = (function () {
   };
 
   // ---------------- SETUP ----------------
-  function init(canvasEl) {
-    canvas = canvasEl;
+  function init(targetCanvas) {
+    console.warn('[DEBUG Engine] Initializing engine module...');
+    
+    canvas = targetCanvas || document.querySelector('#game-canvas') || document.querySelector('canvas');
+    if (!canvas) {
+      console.warn('[DEBUG Engine] Canvas missing, creating fallback element...');
+      canvas = document.createElement('canvas');
+      canvas.id = 'game-canvas';
+      (document.querySelector('.canvas-container') || document.body).appendChild(canvas);
+    }
+
     ctx = canvas.getContext('2d');
+    if (!ctx) {
+      console.error('[DEBUG Engine] Failed to acquire 2D rendering context!');
+      return;
+    }
+
     resize();
+    window.removeEventListener('resize', resize);
     window.addEventListener('resize', resize);
+    
     newLevel(false);
+    start();
   }
 
   function resize() {
-    const wrap = canvas.parentElement;
-    const targetW = Math.min(wrap.clientWidth, 900);
+    if (!canvas) return;
+    const wrap = canvas.parentElement || document.body;
+    const targetW = Math.min(wrap.clientWidth || 800, 900);
     W = canvas.width = targetW;
     H = canvas.height = Math.round(targetW * 0.62);
   }
@@ -76,11 +131,11 @@ Game.Engine = (function () {
   }
 
   function brickBaseHp(level) {
-    const reduction = 1 - Game.State.brickHpScaleReduction();
+    const reduction = 1 - getStatMult('brickHpScaleReduction', 0);
     return 8 * Math.pow(level, 1.32) * reduction + level * 2;
   }
 
-  function specialTypeForLevel(level, isEdgeSafe) {
+  function specialTypeForLevel(level) {
     if (level < 3) return 'normal';
     const weights = [
       { value: 'normal', weight: 55 },
@@ -108,10 +163,9 @@ Game.Engine = (function () {
     const cellW = (W - brickGap * (cols + 1)) / cols;
 
     if (isBossLevel) {
-      // single large boss brick spanning most of the top area
       const bw = cellW * cols * 0.7;
       const bh = brickH * 3;
-      const hp = brickBaseHp(level) * Game.BRICK_TYPES.boss.hpMult;
+      const hp = brickBaseHp(level) * (Game.BRICK_TYPES?.boss?.hpMult || 5);
       bricks.push(makeBrick({
         x: (W - bw) / 2, y: brickAreaTop, w: bw, h: bh, hp, type: 'boss', row: 0, col: 0
       }));
@@ -120,7 +174,7 @@ Game.Engine = (function () {
 
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
-        if (Math.random() < 0.08 && level > 2) continue; // occasional gaps for varied layouts
+        if (Math.random() < 0.08 && level > 2) continue;
         const type = specialTypeForLevel(level);
         let hp = brickBaseHp(level) * U.rand(0.85, 1.25);
         if (type === 'treasure') hp *= 0.6;
@@ -138,7 +192,7 @@ Game.Engine = (function () {
       x: o.x, y: o.y, w: o.w, h: o.h,
       hp: o.hp, maxHp: o.hp,
       type: o.type,
-      shieldHits: o.type === 'shield' ? Game.BRICK_TYPES.shield.shieldHits : 0,
+      shieldHits: o.type === 'shield' ? (Game.BRICK_TYPES?.shield?.shieldHits || 3) : 0,
       moveDir: Math.random() < 0.5 ? -1 : 1,
       baseX: o.x,
       poisonStacks: 0, poisonUntil: 0, poisonTick: 0,
@@ -148,21 +202,18 @@ Game.Engine = (function () {
 
   // ---------------- BALL SPAWNING ----------------
   const SPAWN_BASE_MS = { basic: 900, plasma: 1100, sniper: 1500, poison: 1000, cannon: 2200, scatter: 800 };
-
-  // Max launch angle (degrees from straight up). Sniper stays narrower since it's meant
-  // to fly in a clean line, everything else fans out wide so balls spread across all columns.
   const SPAWN_SPREAD_DEG = { basic: 60, plasma: 60, sniper: 30, poison: 60, cannon: 55, scatter: 65 };
 
   function spawnBall(typeId) {
-    const def = Game.BALL_TYPES[typeId];
+    const def = Game.BALL_TYPES ? Game.BALL_TYPES[typeId] : { speed: 5, behavior: 'basic' };
     const s = Game.State.get();
-    const speed = def.speed * Game.State.speedMultiplier();
+    const speed = (def.speed || 5) * getStatMult('speedMultiplier', 1);
     const spreadDeg = SPAWN_SPREAD_DEG[typeId] !== undefined ? SPAWN_SPREAD_DEG[typeId] : 55;
     const angle = U.rand(-spreadDeg, spreadDeg) * (Math.PI / 180);
     const ball = {
       typeId, x: W / 2 + U.rand(-20, 20), y: H - 18,
       vx: Math.sin(angle) * speed, vy: -Math.cos(angle) * speed,
-      r: 7, damage: Game.State.ballDamage(typeId),
+      r: 7, damage: Game.State.ballDamage ? Game.State.ballDamage(typeId) : 1,
       hitSet: (def.behavior === 'pierce') ? new Set() : null,
       life: 0, isFragment: false
     };
@@ -184,9 +235,10 @@ Game.Engine = (function () {
   // ---------------- SKILLS ----------------
   function useSkill(id) {
     const s = Game.State.get();
+    if (!Game.SKILLS || !s.skills) return false;
     const def = Game.SKILLS.find(k => k.id === id);
     if (!def) return false;
-    const st = s.skills[id];
+    const st = s.skills[id] || { lastUsed: 0 };
     const now = Date.now();
     if (now - st.lastUsed < def.cooldown) return false;
     if (s.level < def.unlockLevel) return false;
@@ -195,12 +247,12 @@ Game.Engine = (function () {
       const alive = bricks.filter(b => b.alive);
       if (alive.length) {
         const target = U.choice(alive);
-        const dmg = Game.State.ballDamage('basic') * 40 + brickBaseHp(s.level) * 2;
+        const dmg = (Game.State.ballDamage ? Game.State.ballDamage('basic') : 1) * 40 + brickBaseHp(s.level) * 2;
         damageBrick(target, dmg, target.x + target.w / 2, target.y + target.h / 2, true);
       }
     } else if (id === 'goldrain') {
       const gps = Game._lastGpsSample || (5 + s.level * 2);
-      const gained = Game.State.addGold(gps * 10);
+      const gained = addGold(gps * 10);
       spawnFloatingText(W / 2, H / 2, `+${U.fmt(gained)}g`, '#ffd700', 22);
     } else if (id === 'frenzy') {
       s.frenzyUntil = now + 10000;
@@ -212,40 +264,43 @@ Game.Engine = (function () {
 
   function skillCooldownRemaining(id) {
     const s = Game.State.get();
+    if (!Game.SKILLS || !s.skills || !s.skills[id]) return 0;
     const def = Game.SKILLS.find(k => k.id === id);
-    const st = s.skills[id];
-    return Math.max(0, def.cooldown - (Date.now() - st.lastUsed));
+    return Math.max(0, def.cooldown - (Date.now() - s.skills[id].lastUsed));
   }
 
   // ---------------- PARTICLES / FLOATING TEXT ----------------
   function spawnParticles(x, y, color, count) {
     const s = Game.State.get();
-    if (!s.settings.particles) return;
+    if (s.settings && !s.settings.particles) return;
     for (let i = 0; i < count; i++) {
       const a = Math.random() * Math.PI * 2;
       const sp = U.rand(1, 4.5);
       particles.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 1, color, size: U.rand(2, 4) });
     }
   }
+
   function spawnFloatingText(x, y, text, color, size) {
     const s = Game.State.get();
-    if (!s.settings.showDamageNumbers) return;
+    if (s.settings && !s.settings.showDamageNumbers) return;
     floatingTexts.push({ x, y, text, color: color || '#fff', size: size || 14, life: 1, vy: -0.6 });
   }
-function resetRun() {
-  activeBalls = [];
-  particles = [];
-  floatingTexts = [];
-  spawnTimers = {};
-  newLevel(false);
-}
+
+  function resetRun() {
+    activeBalls = [];
+    particles = [];
+    floatingTexts = [];
+    spawnTimers = {};
+    newLevel(false);
+  }
+
   // ---------------- DAMAGE / DEATH ----------------
   function damageBrick(brick, amount, hitX, hitY, isMeteor) {
     if (!brick.alive) return;
     const s = Game.State.get();
     let crit = false;
-    if (!isMeteor && Math.random() < Game.State.critChance()) {
-      amount *= Game.State.critMultiplier();
+    if (!isMeteor && Math.random() < getStatMult('critChance', 0.05)) {
+      amount *= getStatMult('critMultiplier', 2);
       crit = true;
       s.stats.critHits++;
       SFX.crit();
@@ -257,7 +312,7 @@ function resetRun() {
       return;
     }
     brick.hp -= amount;
-    s.stats.biggestHit = Math.max(s.stats.biggestHit, amount);
+    s.stats.biggestHit = Math.max(s.stats.biggestHit || 0, amount);
     spawnFloatingText(hitX, hitY, (crit ? 'CRIT ' : '') + U.fmt(amount), crit ? '#ff5252' : '#fff', crit ? 16 : 12);
     spawnParticles(hitX, hitY, crit ? '#ff5252' : '#fff', crit ? 8 : 3);
     SFX.hit();
@@ -270,17 +325,17 @@ function resetRun() {
     const s = Game.State.get();
     s.stats.bricksDestroyed++;
     let goldVal = (brick.maxHp * 0.9) * (1 + s.level * 0.02);
-    if (brick.type === 'treasure') { goldVal *= Game.BRICK_TYPES.treasure.goldMult; s.stats.treasureBricksDestroyed++; }
+    if (brick.type === 'treasure') { goldVal *= (Game.BRICK_TYPES?.treasure?.goldMult || 3); s.stats.treasureBricksDestroyed++; }
     if (brick.type === 'boss') { s.stats.bossesKilled++; goldVal *= 2; }
     if (brick.type === 'explosive') { s.stats.explosiveBricksDestroyed++; }
-    const gained = Game.State.addGold(goldVal);
+    const gained = addGold(goldVal);
     gpsAccumulator.gold += gained;
-    spawnParticles(hitX, hitY, Game.BRICK_TYPES[brick.type].color || '#fff', 14);
+    spawnParticles(hitX, hitY, Game.BRICK_TYPES?.[brick.type]?.color || '#fff', 14);
     spawnFloatingText(hitX, hitY - 10, `+${U.fmt(gained)}`, '#ffd700', 13);
 
     if (brick.type === 'explosive') {
       const cx = brick.x + brick.w / 2, cy = brick.y + brick.h / 2;
-      const radius = Game.BRICK_TYPES.explosive.blastRadius;
+      const radius = Game.BRICK_TYPES?.explosive?.blastRadius || 80;
       bricks.forEach((b) => {
         if (!b.alive || b === brick) return;
         const bx = b.x + b.w / 2, by = b.y + b.h / 2;
@@ -292,39 +347,40 @@ function resetRun() {
 
   // ---------------- COLLISION HANDLING ----------------
   function handleBallBrickHit(ball, brick) {
-    const def = Game.BALL_TYPES[ball.typeId] || { behavior: 'basic' };
+    const def = (Game.BALL_TYPES && Game.BALL_TYPES[ball.typeId]) ? Game.BALL_TYPES[ball.typeId] : { behavior: 'basic' };
     const hitX = ball.x, hitY = ball.y;
 
     if (def.behavior === 'pierce') {
-      if (ball.hitSet.has(brick.id)) return false; // already hit this brick, allow pass-through
+      if (ball.hitSet.has(brick.id)) return false;
       ball.hitSet.add(brick.id);
       damageBrick(brick, ball.damage, hitX, hitY);
-      return false; // don't bounce, keep flying straight
+      return false;
     }
 
     if (def.behavior === 'heavy' && brick.type === 'shield') {
-      brick.shieldHits = 0; // cannon balls smash shields instantly
+      brick.shieldHits = 0;
     }
 
     damageBrick(brick, ball.damage, hitX, hitY);
 
     if (def.behavior === 'splash') {
-      const radius = def.splashRadius;
+      const radius = def.splashRadius || 60;
       bricks.forEach((b) => {
         if (!b.alive || b === brick) return;
         const bx = b.x + b.w / 2, by = b.y + b.h / 2;
         const d = Math.hypot(bx - hitX, by - hitY);
-        if (d < radius) damageBrick(b, ball.damage * def.splashFalloff, bx, by);
+        if (d < radius) damageBrick(b, ball.damage * (def.splashFalloff || 0.5), bx, by);
       });
     }
     if (def.behavior === 'poison') {
-      brick.poisonStacks = Math.min(def.poisonMaxStacks, (brick.poisonStacks || 0) + 1);
-      brick.poisonUntil = Date.now() + def.poisonDuration;
+      brick.poisonStacks = Math.min(def.poisonMaxStacks || 5, (brick.poisonStacks || 0) + 1);
+      brick.poisonUntil = Date.now() + (def.poisonDuration || 3000);
     }
     if (def.behavior === 'scatter' && !ball.isFragment) {
-      for (let i = 0; i < def.fragments; i++) spawnFragment(hitX, hitY, ball.damage * 0.4);
+      const frags = def.fragments || 3;
+      for (let i = 0; i < frags; i++) spawnFragment(hitX, hitY, ball.damage * 0.4);
     }
-    return true; // bounce
+    return true;
   }
 
   // ---------------- UPDATE LOOP ----------------
@@ -332,27 +388,26 @@ function resetRun() {
     const s = Game.State.get();
     const now = Date.now();
 
-    // spawn timers per ball type
-    Game.BALL_ORDER.forEach((id) => {
+    const ballOrder = Game.BALL_ORDER || Object.keys(s.balls || {});
+    ballOrder.forEach((id) => {
       const b = s.balls[id];
-      if (!b.unlocked) return;
+      if (!b || !b.unlocked) return;
       spawnTimers[id] = (spawnTimers[id] || 0) - dt;
       const activeOfType = activeBalls.filter(a => a.typeId === id && !a.isFragment).length;
-      const frenzy = now < s.frenzyUntil ? 3 : 1;
+      const frenzy = now < (s.frenzyUntil || 0) ? 3 : 1;
       if (spawnTimers[id] <= 0 && activeOfType < b.count) {
         spawnBall(id);
-        spawnTimers[id] = (SPAWN_BASE_MS[id] * Game.State.fireRateMultiplier()) / frenzy;
+        spawnTimers[id] = ((SPAWN_BASE_MS[id] || 1000) * getStatMult('fireRateMultiplier', 1)) / frenzy;
       }
     });
 
-    // update bricks: heal + poison + move
     bricks.forEach((b) => {
       if (!b.alive) return;
       if (b.type === 'heal' && b.hp < b.maxHp) {
-        b.hp = Math.min(b.maxHp, b.hp + b.maxHp * Game.BRICK_TYPES.heal.healPct * (dt / 1000));
+        b.hp = Math.min(b.maxHp, b.hp + b.maxHp * (Game.BRICK_TYPES?.heal?.healPct || 0.05) * (dt / 1000));
       }
       if (b.type === 'moving') {
-        b.x += b.moveDir * Game.BRICK_TYPES.moving.moveSpeed * (dt / 16);
+        b.x += b.moveDir * (Game.BRICK_TYPES?.moving?.moveSpeed || 1.5) * (dt / 16);
         if (b.x < 0 || b.x + b.w > W) b.moveDir *= -1;
       }
       if (b.poisonStacks > 0) {
@@ -360,13 +415,12 @@ function resetRun() {
         if (now > b.poisonUntil) { b.poisonStacks = 0; }
         else if (b.poisonTick > 500) {
           b.poisonTick = 0;
-          const dmg = Game.BALL_TYPES.poison.poisonDPS * b.poisonStacks * Game.State.damageMultiplier() * 0.5;
+          const dmg = (Game.BALL_TYPES?.poison?.poisonDPS || 5) * b.poisonStacks * getStatMult('damageMultiplier', 1) * 0.5;
           damageBrick(b, dmg, b.x + b.w / 2, b.y + b.h / 2, true);
         }
       }
     });
 
-    // update balls
     for (let i = activeBalls.length - 1; i >= 0; i--) {
       const ball = activeBalls[i];
       ball.life += dt;
@@ -383,7 +437,6 @@ function resetRun() {
 
       if (ball.y - ball.r > H) { activeBalls.splice(i, 1); continue; }
 
-      // brick collisions
       for (let j = 0; j < bricks.length; j++) {
         const brick = bricks[j];
         if (!brick.alive) continue;
@@ -400,7 +453,6 @@ function resetRun() {
       }
     }
 
-    // particles
     for (let i = particles.length - 1; i >= 0; i--) {
       const p = particles[i];
       p.x += p.vx; p.y += p.vy; p.vy += 0.12; p.life -= dt / 500;
@@ -412,12 +464,10 @@ function resetRun() {
       if (t.life <= 0) floatingTexts.splice(i, 1);
     }
 
-    // level complete check
     if (bricks.length && bricks.every(b => !b.alive)) {
       newLevel(true);
     }
 
-    // stats & gps tracking
     s.stats.playTimeSec += dt / 1000;
     s.stats.runTimeSec += dt / 1000;
     gpsAccumulator.time += dt;
@@ -426,30 +476,32 @@ function resetRun() {
       gpsAccumulator = { gold: 0, time: 0 };
     }
 
-    Game.State.checkAchievements((a) => { SFX.achievement(); emit('achievement', a); });
+    if (Game.State.checkAchievements) {
+      Game.State.checkAchievements((a) => { SFX.achievement(); emit('achievement', a); });
+    }
   }
 
   // ---------------- RENDER ----------------
   function render() {
+    if (!ctx) return;
     ctx.clearRect(0, 0, W, H);
-    // background
+    
     const grad = ctx.createLinearGradient(0, 0, 0, H);
     grad.addColorStop(0, '#141428');
     grad.addColorStop(1, '#0a0a16');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, W, H);
 
-    // bricks
     bricks.forEach((b) => {
       if (!b.alive) return;
-      const def = Game.BRICK_TYPES[b.type];
+      const def = Game.BRICK_TYPES?.[b.type] || {};
       const pct = U.clamp(b.hp / b.maxHp, 0, 1);
       const hue = U.lerp(0, 130, pct);
       ctx.fillStyle = def.color || `hsl(${hue}, 65%, 50%)`;
       ctx.fillRect(b.x, b.y, b.w, b.h);
       ctx.strokeStyle = 'rgba(0,0,0,0.35)';
       ctx.strokeRect(b.x, b.y, b.w, b.h);
-      // hp bar
+      
       ctx.fillStyle = 'rgba(0,0,0,0.4)';
       ctx.fillRect(b.x, b.y + b.h - 4, b.w, 4);
       ctx.fillStyle = '#7CFC00';
@@ -467,19 +519,17 @@ function resetRun() {
       }
     });
 
-    // balls
     activeBalls.forEach((ball) => {
-      const def = Game.BALL_TYPES[ball.typeId];
+      const def = Game.BALL_TYPES?.[ball.typeId] || { color: '#fff', glow: '#aaa' };
       ctx.beginPath();
       ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
       const g = ctx.createRadialGradient(ball.x, ball.y, 1, ball.x, ball.y, ball.r);
-      g.addColorStop(0, def.glow);
-      g.addColorStop(1, def.color);
+      g.addColorStop(0, def.glow || '#fff');
+      g.addColorStop(1, def.color || '#aaa');
       ctx.fillStyle = g;
       ctx.fill();
     });
 
-    // particles
     particles.forEach((p) => {
       ctx.globalAlpha = Math.max(0, p.life);
       ctx.fillStyle = p.color;
@@ -487,7 +537,6 @@ function resetRun() {
     });
     ctx.globalAlpha = 1;
 
-    // floating texts
     floatingTexts.forEach((t) => {
       ctx.globalAlpha = Math.max(0, t.life);
       ctx.fillStyle = t.color;
@@ -497,7 +546,6 @@ function resetRun() {
     });
     ctx.globalAlpha = 1;
 
-    // cannon
     ctx.fillStyle = '#37474f';
     ctx.fillRect(W / 2 - 20, H - 14, 40, 14);
   }
@@ -519,7 +567,7 @@ function resetRun() {
   function getActiveBallCount(typeId) { return activeBalls.filter(a => a.typeId === typeId && !a.isFragment).length; }
 
   return {
-  init, start, stop, on, useSkill, skillCooldownRemaining,
-  getBricks, getActiveBallCount, newLevel, resetRun, SFX
-};
+    init, start, stop, on, useSkill, skillCooldownRemaining,
+    getBricks, getActiveBallCount, newLevel, resetRun, SFX
+  };
 })();
