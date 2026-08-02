@@ -11,16 +11,18 @@ Game.State = (function () {
   function createDefaultState() {
     console.log('[DEBUG State] Creating default clean state...');
     const balls = {};
-    Game.BALL_ORDER.forEach((id) => {
-      const def = Game.BALL_TYPES[id];
-      balls[id] = {
-        unlocked: id === 'basic',
-        count: id === 'basic' ? 1 : 0,
-        dmgLevel: 1,
-        countCost: def.baseCost,
-        dmgCost: def.baseDmgCost
-      };
-    });
+    if (Game.BALL_ORDER && Game.BALL_TYPES) {
+      Game.BALL_ORDER.forEach((id) => {
+        const def = Game.BALL_TYPES[id];
+        balls[id] = {
+          unlocked: id === 'basic',
+          count: id === 'basic' ? 1 : 0,
+          dmgLevel: 1,
+          countCost: def.baseCost,
+          dmgCost: def.baseDmgCost
+        };
+      });
+    }
 
     return {
       version: 1,
@@ -29,8 +31,8 @@ Game.State = (function () {
       level: 1,
       lastSaveTime: Date.now(),
       balls: balls,
-      globalUpgrades: {},   // Map of upgrade_id -> level
-      prestigeUpgrades: {}, // Map of prestige_id -> level
+      globalUpgrades: {},   
+      prestigeUpgrades: {}, 
       achievementsUnlocked: {},
       stats: {
         totalGoldEarned: 0,
@@ -58,7 +60,6 @@ Game.State = (function () {
     };
   }
 
-  // ---------------- GETTERS ----------------
   function get() { return state; }
 
   function costFor(baseCost, mult, level) {
@@ -73,24 +74,22 @@ Game.State = (function () {
     return state.prestigeUpgrades[id] || 0;
   }
 
-  // ---------------- CALCULATIONS ----------------
   function ballDamage(id) {
+    if (!Game.BALL_TYPES) return 1;
     const def = Game.BALL_TYPES[id];
     const b = state.balls[id];
     if (!b || !b.unlocked) return 0;
 
     let dmg = def.baseDmg + (b.dmgLevel - 1) * def.dmgStep;
 
-    // Apply global upgrade multipliers
     const gPowerLvl = globalUpgradeLevel('ball_power');
-    if (gPowerLvl > 0) {
+    if (gPowerLvl > 0 && Game.GLOBAL_UPGRADES) {
       const u = Game.GLOBAL_UPGRADES.find(x => x.id === 'ball_power');
       if (u) dmg *= (1 + gPowerLvl * u.perLevel);
     }
 
-    // Apply prestige upgrade multipliers
     const pPowerLvl = prestigeUpgradeLevel('p_ball_power');
-    if (pPowerLvl > 0) {
+    if (pPowerLvl > 0 && Game.PRESTIGE_UPGRADES) {
       const u = Game.PRESTIGE_UPGRADES.find(x => x.id === 'p_ball_power');
       if (u) dmg *= (1 + pPowerLvl * u.perLevel);
     }
@@ -98,7 +97,6 @@ Game.State = (function () {
     return Math.max(1, Math.round(dmg));
   }
 
-  // ---------------- PURCHASES ----------------
   function buyBallCount(id) {
     const b = state.balls[id];
     const def = Game.BALL_TYPES[id];
@@ -175,7 +173,6 @@ Game.State = (function () {
     return true;
   }
 
-  // ---------------- PRESTIGE RESET ----------------
   function gemsOnPrestige() {
     const earned = state.stats.totalGoldEarned || 0;
     const calc = Math.floor(earned / 100000);
@@ -189,7 +186,7 @@ Game.State = (function () {
     state.gems += gain;
     state.gold = 0;
     state.level = 1;
-    state.globalUpgrades = {}; // Reset global gold upgrades
+    state.globalUpgrades = {}; 
 
     Game.BALL_ORDER.forEach((id) => {
       const def = Game.BALL_TYPES[id];
@@ -209,7 +206,6 @@ Game.State = (function () {
     return true;
   }
 
-  // ---------------- PERSISTENCE ----------------
   function isStorageAvailable() {
     try {
       const k = '__test__';
@@ -230,12 +226,7 @@ Game.State = (function () {
     try {
       const payload = JSON.stringify(state);
       localStorage.setItem(STORAGE_KEY, payload);
-      console.warn('[DEBUG Save SUCCESS] Saved payload to localStorage:', {
-        globalUpgrades: state.globalUpgrades,
-        prestigeUpgrades: state.prestigeUpgrades,
-        gold: state.gold,
-        gems: state.gems
-      });
+      console.warn('[DEBUG Save SUCCESS] Saved payload to localStorage');
     } catch (e) {
       console.error('[DEBUG Save ERROR] Failed to save game state:', e);
     }
@@ -275,10 +266,7 @@ Game.State = (function () {
       if (loaded.stats) Object.assign(state.stats, loaded.stats);
       if (loaded.settings) Object.assign(state.settings, loaded.settings);
 
-      console.warn('[DEBUG Load SUCCESS] Restored state:', {
-        globalUpgrades: state.globalUpgrades,
-        prestigeUpgrades: state.prestigeUpgrades
-      });
+      console.warn('[DEBUG Load SUCCESS] Restored state successfully.');
 
       return true;
     } catch (e) {
@@ -318,7 +306,7 @@ Game.State = (function () {
   }
 
   return {
-    init: load, // Restores init method expected by main.js
+    init: load, 
     get,
     costFor,
     globalUpgradeLevel,
