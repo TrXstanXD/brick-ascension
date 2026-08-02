@@ -170,7 +170,6 @@ Game.UI = (function () {
   function renderAchievements() {
     const container = $('#achievements-list');
     if (container.dataset.rendered === '1' && container.childElementCount === Game.ACHIEVEMENTS.length) {
-      // just update unlocked classes, avoid full rebuild every tick
       Game.ACHIEVEMENTS.forEach((a) => {
         const node = container.querySelector(`[data-ach="${a.id}"]`);
         if (node) node.classList.toggle('unlocked', !!s.achievementsUnlocked[a.id]);
@@ -190,6 +189,7 @@ Game.UI = (function () {
     container.dataset.rendered = '1';
     updateAchievementCount();
   }
+
   function updateAchievementCount() {
     const total = Game.ACHIEVEMENTS.length;
     const done = Object.keys(s.achievementsUnlocked).length;
@@ -232,28 +232,19 @@ Game.UI = (function () {
   function bindPrestige() {
     $('#prestige-btn').addEventListener('click', () => {
       const gain = Game.State.gemsOnPrestige();
-      if (gain < 1) { alert('Earn more gold this run before ascending — you need enough progress to gain at least 1 Gem.'); return; }
+      if (gain < 1) { 
+        alert('Earn more gold this run before ascending — you need enough progress to gain at least 1 Gem.'); 
+        return; 
+      }
       if (!confirm(`Ascend now? You will reset gold, levels, and balls, but keep Gems and permanent upgrades. You will gain ${gain} Gem(s).`)) return;
+      
       Game.Engine.SFX.prestige();
       Game.State.doPrestige();
-      Game.Engine.newLevel(false);
+      Game.Engine.resetRun(); // Clears active balls, particles, and resets level 1
       s = Game.State.get();
       renderAll();
     });
-    $('#prestige-btn').addEventListener('click', () => {
-  const gain = Game.State.gemsOnPrestige();
-  if (gain < 1) { 
-    alert('Earn more gold this run before ascending — you need enough progress to gain at least 1 Gem.'); 
-    return; 
-  }
-  if (!confirm(`Ascend now? You will reset gold, levels, and balls, but keep Gems and permanent upgrades. You will gain ${gain} Gem(s).`)) return;
-  
-  Game.Engine.SFX.prestige();
-  Game.State.doPrestige();
-  Game.Engine.resetRun(); // Clears all leftover balls/effects and resets level 1 bricks
-  s = Game.State.get();
-  renderAll();
-});
+
     $('#prestige-upgrades-list').innerHTML = '';
     Game.PRESTIGE_UPGRADES.forEach((u) => {
       const card = el('div', 'upgrade-card gem');
@@ -301,7 +292,7 @@ Game.UI = (function () {
       if (confirm('This will permanently erase ALL progress, including Gems and prestige upgrades. Continue?')) {
         Game.State.hardReset();
         s = Game.State.get();
-        Game.Engine.newLevel(false);
+        Game.Engine.resetRun();
         renderAll();
       }
     });
@@ -321,7 +312,7 @@ Game.UI = (function () {
       if (!val.trim()) { notify('Paste a save string first.'); return; }
       if (Game.State.importSave(val)) {
         s = Game.State.get();
-        Game.Engine.newLevel(false);
+        Game.Engine.resetRun();
         renderAll();
         notify('Save imported successfully.');
       } else {
@@ -343,7 +334,7 @@ Game.UI = (function () {
       reader.onload = () => {
         if (Game.State.importSave(reader.result)) {
           s = Game.State.get();
-          Game.Engine.newLevel(false);
+          Game.Engine.resetRun();
           renderAll();
           notify('Save file loaded successfully.');
         } else {
@@ -364,9 +355,7 @@ Game.UI = (function () {
   }
 
   // ---------------- OFFLINE MODAL ----------------
-  function maybeShowOfflineModal() {
-    // applyOfflineProgress already ran during State.init(); we just report if meaningful
-  }
+  function maybeShowOfflineModal() {}
   function reportOffline(result) {
     if (result && result.gold > 1) {
       notify(`Welcome back! You earned ${U.fmt(result.gold)} gold while away (${U.fmtTime(result.seconds)}).`);
