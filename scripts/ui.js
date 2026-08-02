@@ -17,7 +17,11 @@ Game.UI = (function () {
   }
 
   function init() {
+    console.log('[DEBUG UI] Initializing UI module...');
+    // Explicitly load state before getting reference
+    Game.State.load();
     s = Game.State.get();
+
     checkStorage();
     bindTabs();
     bindTopBar();
@@ -25,12 +29,23 @@ Game.UI = (function () {
     bindSettings();
     bindPrestige();
     bindSaveButtons();
+
     Game.Engine.on('achievement', showAchievementToast);
     Game.Engine.on('levelUp', () => flashLevel());
+
     renderAll();
     refreshTimer = setInterval(renderAll, 400);
-    setInterval(() => { Game.State.save(); }, (s.settings.autosaveSec || 10) * 1000);
-    window.addEventListener('beforeunload', () => Game.State.save());
+
+    setInterval(() => { 
+      console.log('[DEBUG UI] Autosave triggered');
+      Game.State.save(); 
+    }, (s.settings.autosaveSec || 10) * 1000);
+
+    window.addEventListener('beforeunload', () => {
+      console.log('[DEBUG UI] Page unloading - saving state');
+      Game.State.save();
+    });
+
     maybeShowOfflineModal();
   }
 
