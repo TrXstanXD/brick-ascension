@@ -38,7 +38,7 @@ Game.UI = (function () {
   function checkStorage() {
     const ok = Game.State.isStorageAvailable();
     const banner = $('#storage-warning');
-    banner.classList.toggle('hidden', ok);
+    if (banner) banner.classList.toggle('hidden', ok);
   }
 
   // ---------------- TABS ----------------
@@ -48,7 +48,8 @@ Game.UI = (function () {
         document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
         document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
         btn.classList.add('active');
-        $('#panel-' + btn.dataset.tab).classList.add('active');
+        const panel = $('#panel-' + btn.dataset.tab);
+        if (panel) panel.classList.add('active');
       });
     });
   }
@@ -57,15 +58,16 @@ Game.UI = (function () {
   function bindTopBar() {}
 
   function renderTopBar() {
-    $('#gold-display').textContent = U.fmt(s.gold);
-    $('#gems-display').textContent = U.fmt(s.gems);
-    $('#level-display').textContent = s.level;
+    if ($('#gold-display')) $('#gold-display').textContent = U.fmt(s.gold);
+    if ($('#gems-display')) $('#gems-display').textContent = U.fmt(s.gems);
+    if ($('#level-display')) $('#level-display').textContent = s.level;
     const gps = Game._lastGpsSample || 0;
-    $('#gps-display').textContent = U.fmt(gps) + '/s';
+    if ($('#gps-display')) $('#gps-display').textContent = U.fmt(gps) + '/s';
   }
 
   function flashLevel() {
     const el2 = $('#level-display');
+    if (!el2) return;
     el2.classList.add('flash');
     setTimeout(() => el2.classList.remove('flash'), 400);
   }
@@ -73,6 +75,7 @@ Game.UI = (function () {
   // ---------------- BALLS / UPGRADES PANEL ----------------
   function renderBalls() {
     const container = $('#balls-list');
+    if (!container) return;
     container.innerHTML = '';
     Game.BALL_ORDER.forEach((id) => {
       const def = Game.BALL_TYPES[id];
@@ -116,6 +119,7 @@ Game.UI = (function () {
 
   function renderGlobalUpgrades() {
     const container = $('#upgrades-list');
+    if (!container) return;
     container.innerHTML = '';
     Game.GLOBAL_UPGRADES.forEach((u) => {
       const lvl = Game.State.globalUpgradeLevel(u.id);
@@ -136,6 +140,7 @@ Game.UI = (function () {
   // ---------------- SKILLS ----------------
   function bindSkills() {
     const container = $('#skills-list');
+    if (!container) return;
     container.innerHTML = '';
     Game.SKILLS.forEach((sk) => {
       const btn = el('button', 'skill-btn');
@@ -155,12 +160,12 @@ Game.UI = (function () {
       btn.disabled = !unlocked;
       const cdEl = btn.querySelector('.skill-cd');
       if (!unlocked) {
-        cdEl.textContent = `Unlocks Lv.${def.unlockLevel}`;
+        if (cdEl) cdEl.textContent = `Unlocks Lv.${def.unlockLevel}`;
         btn.classList.add('locked');
       } else {
         btn.classList.remove('locked');
         const rem = Game.Engine.skillCooldownRemaining(id);
-        cdEl.textContent = rem > 0 ? U.fmtTime(rem / 1000) : 'Ready!';
+        if (cdEl) cdEl.textContent = rem > 0 ? U.fmtTime(rem / 1000) : 'Ready!';
         btn.classList.toggle('ready', rem <= 0);
       }
     });
@@ -169,6 +174,7 @@ Game.UI = (function () {
   // ---------------- ACHIEVEMENTS ----------------
   function renderAchievements() {
     const container = $('#achievements-list');
+    if (!container) return;
     if (container.dataset.rendered === '1' && container.childElementCount === Game.ACHIEVEMENTS.length) {
       Game.ACHIEVEMENTS.forEach((a) => {
         const node = container.querySelector(`[data-ach="${a.id}"]`);
@@ -193,19 +199,22 @@ Game.UI = (function () {
   function updateAchievementCount() {
     const total = Game.ACHIEVEMENTS.length;
     const done = Object.keys(s.achievementsUnlocked).length;
-    $('#ach-count').textContent = `${done} / ${total}`;
+    if ($('#ach-count')) $('#ach-count').textContent = `${done} / ${total}`;
   }
 
   function showAchievementToast(a) {
     const box = el('div', 'toast');
     box.innerHTML = `<div class="toast-title">🏆 Achievement Unlocked</div><div class="toast-name">${a.name}</div>`;
-    $('#toast-container').appendChild(box);
+    const container = $('#toast-container') || document.body;
+    container.appendChild(box);
     setTimeout(() => box.classList.add('show'), 10);
     setTimeout(() => { box.classList.remove('show'); setTimeout(() => box.remove(), 400); }, 3600);
   }
 
   // ---------------- STATS ----------------
   function renderStats() {
+    const container = $('#stats-list');
+    if (!container) return;
     const st = s.stats;
     const rows = [
       ['Level Reached', s.level],
@@ -225,36 +234,42 @@ Game.UI = (function () {
       ['Total Play Time', U.fmtTime(st.playTimeSec)],
       ['This Run Time', U.fmtTime(st.runTimeSec)]
     ];
-    $('#stats-list').innerHTML = rows.map(r => `<div class="stat-row"><span>${r[0]}</span><b>${r[1]}</b></div>`).join('');
+    container.innerHTML = rows.map(r => `<div class="stat-row"><span>${r[0]}</span><b>${r[1]}</b></div>`).join('');
   }
 
   // ---------------- PRESTIGE ----------------
   function bindPrestige() {
-    $('#prestige-btn').addEventListener('click', () => {
-      const gain = Game.State.gemsOnPrestige();
-      if (gain < 1) { 
-        alert('Earn more gold this run before ascending — you need enough progress to gain at least 1 Gem.'); 
-        return; 
-      }
-      if (!confirm(`Ascend now? You will reset gold, levels, and balls, but keep Gems and permanent upgrades. You will gain ${gain} Gem(s).`)) return;
-      
-      Game.Engine.SFX.prestige();
-      Game.State.doPrestige();
-      Game.Engine.resetRun(); // Clears active balls, particles, and resets level 1
-      s = Game.State.get();
-      renderAll();
-    });
+    const prestigeBtn = $('#prestige-btn');
+    if (prestigeBtn) {
+      prestigeBtn.addEventListener('click', () => {
+        const gain = Game.State.gemsOnPrestige();
+        if (gain < 1) { 
+          alert('Earn more gold this run before ascending — you need enough progress to gain at least 1 Gem.'); 
+          return; 
+        }
+        if (!confirm(`Ascend now? You will reset gold, levels, and balls, but keep Gems and permanent upgrades. You will gain ${gain} Gem(s).`)) return;
+        
+        Game.Engine.SFX.prestige();
+        Game.State.doPrestige();
+        Game.Engine.resetRun();
+        s = Game.State.get();
+        renderAll();
+      });
+    }
 
-    $('#prestige-upgrades-list').innerHTML = '';
-    Game.PRESTIGE_UPGRADES.forEach((u) => {
-      const card = el('div', 'upgrade-card gem');
-      card.dataset.id = u.id;
-      $('#prestige-upgrades-list').appendChild(card);
-    });
+    const list = $('#prestige-upgrades-list');
+    if (list) {
+      list.innerHTML = '';
+      Game.PRESTIGE_UPGRADES.forEach((u) => {
+        const card = el('div', 'upgrade-card gem');
+        card.dataset.id = u.id;
+        list.appendChild(card);
+      });
+    }
   }
 
   function renderPrestige() {
-    $('#prestige-gain').textContent = Game.State.gemsOnPrestige();
+    if ($('#prestige-gain')) $('#prestige-gain').textContent = Game.State.gemsOnPrestige();
     document.querySelectorAll('#prestige-upgrades-list .upgrade-card').forEach((card) => {
       const id = card.dataset.id;
       const u = Game.PRESTIGE_UPGRADES.find(x => x.id === id);
@@ -273,83 +288,107 @@ Game.UI = (function () {
   // ---------------- SETTINGS ----------------
   function bindSettings() {
     const sfx = $('#sfx-volume'), music = $('#music-volume');
-    sfx.value = s.settings.sfxVolume; music.value = s.settings.musicVolume;
-    sfx.addEventListener('input', () => { s.settings.sfxVolume = parseFloat(sfx.value); });
-    music.addEventListener('input', () => { s.settings.musicVolume = parseFloat(music.value); });
+    if (sfx) {
+      sfx.value = s.settings.sfxVolume;
+      sfx.addEventListener('input', () => { s.settings.sfxVolume = parseFloat(sfx.value); });
+    }
+    if (music) {
+      music.value = s.settings.musicVolume;
+      music.addEventListener('input', () => { s.settings.musicVolume = parseFloat(music.value); });
+    }
 
     ['particles', 'screenShake', 'showDamageNumbers'].forEach((key) => {
       const box = $('#opt-' + key);
-      box.checked = s.settings[key];
-      box.addEventListener('change', () => { s.settings[key] = box.checked; });
-    });
-
-    $('#autosave-interval').value = s.settings.autosaveSec;
-    $('#autosave-interval').addEventListener('change', (e) => {
-      s.settings.autosaveSec = Math.max(5, parseInt(e.target.value) || 10);
-    });
-
-    $('#hard-reset-btn').addEventListener('click', () => {
-      if (confirm('This will permanently erase ALL progress, including Gems and prestige upgrades. Continue?')) {
-        Game.State.hardReset();
-        s = Game.State.get();
-        Game.Engine.resetRun();
-        renderAll();
+      if (box) {
+        box.checked = s.settings[key];
+        box.addEventListener('change', () => { s.settings[key] = box.checked; });
       }
     });
+
+    const autoBox = $('#autosave-interval');
+    if (autoBox) {
+      autoBox.value = s.settings.autosaveSec;
+      autoBox.addEventListener('change', (e) => {
+        s.settings.autosaveSec = Math.max(5, parseInt(e.target.value) || 10);
+      });
+    }
+
+    const resetBtn = $('#hard-reset-btn');
+    if (resetBtn) {
+      resetBtn.addEventListener('click', () => {
+        if (confirm('This will permanently erase ALL progress, including Gems and prestige upgrades. Continue?')) {
+          Game.State.hardReset();
+          s = Game.State.get();
+          Game.Engine.resetRun();
+          renderAll();
+        }
+      });
+    }
   }
 
   // ---------------- SAVE / LOAD BUTTONS ----------------
   function bindSaveButtons() {
-    $('#save-btn').addEventListener('click', () => { Game.State.save(); notify('Game saved.'); });
-    $('#export-btn').addEventListener('click', () => {
-      const data = Game.State.exportSave();
-      $('#export-textarea').value = data;
-      $('#export-textarea').select();
-      notify('Save exported below — copy it somewhere safe.');
-    });
-    $('#import-btn').addEventListener('click', () => {
-      const val = $('#export-textarea').value;
-      if (!val.trim()) { notify('Paste a save string first.'); return; }
-      if (Game.State.importSave(val)) {
-        s = Game.State.get();
-        Game.Engine.resetRun();
-        renderAll();
-        notify('Save imported successfully.');
-      } else {
-        notify('Import failed — invalid save string.');
-      }
-    });
-    $('#download-btn').addEventListener('click', () => {
-      const data = Game.State.exportSave();
-      const blob = new Blob([data], { type: 'text/plain' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = 'idle-breakout-save.txt';
-      a.click();
-    });
-    $('#load-file-input').addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        if (Game.State.importSave(reader.result)) {
+    if ($('#save-btn')) $('#save-btn').addEventListener('click', () => { Game.State.save(); notify('Game saved.'); });
+    if ($('#export-btn')) {
+      $('#export-btn').addEventListener('click', () => {
+        const data = Game.State.exportSave();
+        if ($('#export-textarea')) {
+          $('#export-textarea').value = data;
+          $('#export-textarea').select();
+        }
+        notify('Save exported below — copy it somewhere safe.');
+      });
+    }
+    if ($('#import-btn')) {
+      $('#import-btn').addEventListener('click', () => {
+        const val = $('#export-textarea') ? $('#export-textarea').value : '';
+        if (!val.trim()) { notify('Paste a save string first.'); return; }
+        if (Game.State.importSave(val)) {
           s = Game.State.get();
           Game.Engine.resetRun();
           renderAll();
-          notify('Save file loaded successfully.');
+          notify('Save imported successfully.');
         } else {
-          notify('That file doesn\'t look like a valid save.');
+          notify('Import failed — invalid save string.');
         }
-      };
-      reader.readAsText(file);
-      e.target.value = '';
-    });
+      });
+    }
+    if ($('#download-btn')) {
+      $('#download-btn').addEventListener('click', () => {
+        const data = Game.State.exportSave();
+        const blob = new Blob([data], { type: 'text/plain' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'idle-breakout-save.txt';
+        a.click();
+      });
+    }
+    if ($('#load-file-input')) {
+      $('#load-file-input').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          if (Game.State.importSave(reader.result)) {
+            s = Game.State.get();
+            Game.Engine.resetRun();
+            renderAll();
+            notify('Save file loaded successfully.');
+          } else {
+            notify('That file doesn\'t look like a valid save.');
+          }
+        };
+        reader.readAsText(file);
+        e.target.value = '';
+      });
+    }
   }
 
   function notify(msg) {
     const box = el('div', 'toast simple');
     box.textContent = msg;
-    $('#toast-container').appendChild(box);
+    const container = $('#toast-container') || document.body;
+    container.appendChild(box);
     setTimeout(() => box.classList.add('show'), 10);
     setTimeout(() => { box.classList.remove('show'); setTimeout(() => box.remove(), 400); }, 2400);
   }
