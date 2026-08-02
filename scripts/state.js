@@ -9,6 +9,7 @@ Game.State = (function () {
   let state = createDefaultState();
 
   function createDefaultState() {
+    console.log('[DEBUG State] Creating default clean state...');
     const balls = {};
     Game.BALL_ORDER.forEach((id) => {
       const def = Game.BALL_TYPES[id];
@@ -154,6 +155,7 @@ Game.State = (function () {
     state.stats.totalGoldSpent += cost;
     state.globalUpgrades[id] = lvl + 1;
     state.stats.upgradesBought++;
+    console.log(`[DEBUG State] Purchased Global Upgrade ${id} -> Lv.${state.globalUpgrades[id]}`);
     save();
     return true;
   }
@@ -168,13 +170,13 @@ Game.State = (function () {
 
     state.gems -= cost;
     state.prestigeUpgrades[id] = lvl + 1;
+    console.log(`[DEBUG State] Purchased Prestige Upgrade ${id} -> Lv.${state.prestigeUpgrades[id]}`);
     save();
     return true;
   }
 
   // ---------------- PRESTIGE RESET ----------------
   function gemsOnPrestige() {
-    // 1 Gem per 100,000 total gold earned
     const earned = state.stats.totalGoldEarned || 0;
     const calc = Math.floor(earned / 100000);
     return Math.max(0, calc);
@@ -189,7 +191,6 @@ Game.State = (function () {
     state.level = 1;
     state.globalUpgrades = {}; // Reset global gold upgrades
 
-    // Reset ball levels to baseline
     Game.BALL_ORDER.forEach((id) => {
       const def = Game.BALL_TYPES[id];
       state.balls[id] = {
@@ -203,6 +204,7 @@ Game.State = (function () {
 
     state.stats.prestigeCount++;
     state.stats.runTimeSec = 0;
+    console.log('[DEBUG State] Prestiged! Retained Prestige Upgrades:', state.prestigeUpgrades);
     save();
     return true;
   }
@@ -220,24 +222,40 @@ Game.State = (function () {
   }
 
   function save() {
-    if (!isStorageAvailable()) return;
+    if (!isStorageAvailable()) {
+      console.warn('[DEBUG Save] localStorage is not available!');
+      return;
+    }
     state.lastSaveTime = Date.now();
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      const payload = JSON.stringify(state);
+      localStorage.setItem(STORAGE_KEY, payload);
+      console.log('[DEBUG Save] Game state saved successfully!', {
+        globalUpgrades: state.globalUpgrades,
+        prestigeUpgrades: state.prestigeUpgrades,
+        gold: state.gold,
+        gems: state.gems
+      });
     } catch (e) {
-      console.error('Failed to save game state:', e);
+      console.error('[DEBUG Save] Failed to save game state:', e);
     }
   }
 
   function load() {
-    if (!isStorageAvailable()) return false;
+    if (!isStorageAvailable()) {
+      console.warn('[DEBUG Load] localStorage not available.');
+      return false;
+    }
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return false;
+      if (!raw) {
+        console.log('[DEBUG Load] No save key found in localStorage.');
+        return false;
+      }
 
       const loaded = JSON.parse(raw);
+      console.log('[DEBUG Load] Raw JSON loaded from localStorage:', loaded);
       
-      // Basic values
       state.gold = loaded.gold ?? 0;
       state.gems = loaded.gems ?? 0;
       state.level = loaded.level ?? 1;
@@ -259,9 +277,14 @@ Game.State = (function () {
       if (loaded.stats) Object.assign(state.stats, loaded.stats);
       if (loaded.settings) Object.assign(state.settings, loaded.settings);
 
+      console.log('[DEBUG Load] State successfully restored in memory:', {
+        globalUpgrades: state.globalUpgrades,
+        prestigeUpgrades: state.prestigeUpgrades
+      });
+
       return true;
     } catch (e) {
-      console.error('Failed to load save:', e);
+      console.error('[DEBUG Load] Failed to parse save:', e);
       return false;
     }
   }
@@ -282,12 +305,13 @@ Game.State = (function () {
       load();
       return true;
     } catch (e) {
-      console.error('Invalid save string:', e);
+      console.error('[DEBUG Import] Invalid save string:', e);
       return false;
     }
   }
 
   function hardReset() {
+    console.log('[DEBUG State] Performing HARD RESET');
     state = createDefaultState();
     if (isStorageAvailable()) {
       localStorage.removeItem(STORAGE_KEY);
