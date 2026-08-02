@@ -1,10 +1,10 @@
-# Brick Ascension — an Idle Breakout clone
+# Brick Ascension, an Idle Breakout clone
 
 A self-contained HTML/CSS/JS idle game. No build step, no dependencies.
 
 ## Playing it
 
-Just open `index.html` in a browser — but see the important note below about saving.
+Just open `index.html` in a browser; but see the important note below about saving. (or just go to the github page at https://trxstanxd.github.io/brick-ascension/)
 
 ## ⚠️ Important: saving and `file://` URLs
 
