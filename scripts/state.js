@@ -42,7 +42,7 @@ Game.State = (function () {
         showDamageNumbers: true, autosaveSec: 10, fpsCap: 60
       },
       stats: {
-        bricksDestroyed: 0, totalGoldEarned: 0, totalGoldSpent: 0, critHits: 0,
+        bricksDestroyed: 0, totalGoldEarned: 0, runGoldEarned: 0, totalGoldSpent: 0, critHits: 0,
         bossesKilled: 0, treasureBricksDestroyed: 0, explosiveBricksDestroyed: 0,
         upgradesBought: 0, prestigeCount: 0, playTimeSec: 0, runTimeSec: 0,
         biggestHit: 0, ballsSpawned: 0
@@ -175,35 +175,36 @@ Game.State = (function () {
 
   // ---------------- prestige ----------------
   function gemsOnPrestige() {
-    return Math.floor(Math.sqrt(Math.max(0, s.stats.totalGoldEarned) / 5e5));
-  }
+  return Math.floor(Math.sqrt(Math.max(0, s.stats.runGoldEarned || 0) / 5e5));
+}
 
   function doPrestige() {
-    const gained = gemsOnPrestige();
-    if (gained < 1) return false;
-    const keep = {
-      gems: s.gems + gained + Math.floor(gained * s.bonuses.gemGainFlat),
-      prestigeUpgrades: s.prestigeUpgrades,
-      achievementsUnlocked: s.achievementsUnlocked,
-      bonuses: s.bonuses,
-      settings: s.settings,
-      stats: s.stats,
-      createdAt: s.createdAt
-    };
-    const fresh = defaultState();
-    fresh.gems = keep.gems;
-    fresh.prestigeUpgrades = keep.prestigeUpgrades;
-    fresh.achievementsUnlocked = keep.achievementsUnlocked;
-    fresh.bonuses = keep.bonuses;
-    fresh.settings = keep.settings;
-    fresh.stats = keep.stats;
-    fresh.stats.prestigeCount++;
-    fresh.stats.runTimeSec = 0;
-    fresh.createdAt = keep.createdAt;
-    fresh.gold = 20 + computePrestigeStatWith(fresh, 'gemStartGold');
-    s = fresh;
-    return true;
-  }
+  const gained = gemsOnPrestige();
+  if (gained < 1) return false;
+  const keep = {
+    gems: s.gems + gained + Math.floor(gained * s.bonuses.gemGainFlat),
+    prestigeUpgrades: s.prestigeUpgrades,
+    achievementsUnlocked: s.achievementsUnlocked,
+    bonuses: s.bonuses,
+    settings: s.settings,
+    stats: s.stats,
+    createdAt: s.createdAt
+  };
+  const fresh = defaultState();
+  fresh.gems = keep.gems;
+  fresh.prestigeUpgrades = keep.prestigeUpgrades;
+  fresh.achievementsUnlocked = keep.achievementsUnlocked;
+  fresh.bonuses = keep.bonuses;
+  fresh.settings = keep.settings;
+  fresh.stats = keep.stats;
+  fresh.stats.prestigeCount++;
+  fresh.stats.runTimeSec = 0;
+  fresh.stats.runGoldEarned = 0; // Reset run gold on ascension
+  fresh.createdAt = keep.createdAt;
+  fresh.gold = 20 + computePrestigeStatWith(fresh, 'gemStartGold');
+  s = fresh;
+  return true;
+}
 
   function computePrestigeStatWith(state, statName) {
     let val = 0;
@@ -230,11 +231,12 @@ Game.State = (function () {
 
   // ---------------- gold / gain ----------------
   function addGold(amount) {
-    const g = amount * goldMultiplier();
-    s.gold += g;
-    s.stats.totalGoldEarned += g;
-    return g;
-  }
+  const g = amount * goldMultiplier();
+  s.gold += g;
+  s.stats.totalGoldEarned += g;
+  s.stats.runGoldEarned = (s.stats.runGoldEarned || 0) + g;
+  return g;
+}
 
   // approximate gold-per-second for offline calc / skill use, based on recent brick value
   function estimatedGps() {
