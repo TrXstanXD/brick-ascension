@@ -128,7 +128,6 @@ Game.State = (function () {
     if (!b) return 1;
     const base = Game.BALL_TYPES && Game.BALL_TYPES[typeId] ? Game.BALL_TYPES[typeId].baseDamage || 1 : 1;
     const lvl = Math.max(1, b.level || 1);
-    // Base formula scaling with ball level
     const dmg = base * Math.pow(1.15, lvl - 1) + (lvl - 1) * 0.5;
     return Math.max(1, Math.floor(dmg * damageMultiplier()));
   }
@@ -184,11 +183,23 @@ Game.State = (function () {
   }
 
   function checkAchievements(onUnlocked) {
-    if (!Game.ACHIEVEMENTS) return;
+    if (!Game.ACHIEVEMENTS || !Array.isArray(Game.ACHIEVEMENTS)) return;
+    
     Game.ACHIEVEMENTS.forEach((ach) => {
-      if (!state.achievements[ach.id] && ach.condition(state)) {
+      if (!ach || state.achievements[ach.id]) return;
+
+      let isUnlocked = false;
+      if (typeof ach.condition === 'function') {
+        try {
+          isUnlocked = ach.condition(state);
+        } catch (err) {
+          console.warn(`Error evaluating achievement ${ach.id}:`, err);
+        }
+      }
+
+      if (isUnlocked) {
         state.achievements[ach.id] = true;
-        if (onUnlocked) onUnlocked(ach);
+        if (typeof onUnlocked === 'function') onUnlocked(ach);
       }
     });
   }
