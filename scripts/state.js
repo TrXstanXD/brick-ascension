@@ -155,7 +155,7 @@ Game.State = (function () {
     state.stats.totalGoldSpent += cost;
     state.globalUpgrades[id] = lvl + 1;
     state.stats.upgradesBought++;
-    console.log(`[DEBUG State] Purchased Global Upgrade ${id} -> Lv.${state.globalUpgrades[id]}`);
+    console.warn(`[DEBUG State] Purchased Global Upgrade ${id} -> Lv.${state.globalUpgrades[id]}`);
     save();
     return true;
   }
@@ -170,7 +170,7 @@ Game.State = (function () {
 
     state.gems -= cost;
     state.prestigeUpgrades[id] = lvl + 1;
-    console.log(`[DEBUG State] Purchased Prestige Upgrade ${id} -> Lv.${state.prestigeUpgrades[id]}`);
+    console.warn(`[DEBUG State] Purchased Prestige Upgrade ${id} -> Lv.${state.prestigeUpgrades[id]}`);
     save();
     return true;
   }
@@ -204,7 +204,7 @@ Game.State = (function () {
 
     state.stats.prestigeCount++;
     state.stats.runTimeSec = 0;
-    console.log('[DEBUG State] Prestiged! Retained Prestige Upgrades:', state.prestigeUpgrades);
+    console.warn('[DEBUG State] Prestiged! Retained Prestige Upgrades:', state.prestigeUpgrades);
     save();
     return true;
   }
@@ -230,14 +230,14 @@ Game.State = (function () {
     try {
       const payload = JSON.stringify(state);
       localStorage.setItem(STORAGE_KEY, payload);
-      console.log('[DEBUG Save] Game state saved successfully!', {
+      console.warn('[DEBUG Save SUCCESS] Saved payload to localStorage:', {
         globalUpgrades: state.globalUpgrades,
         prestigeUpgrades: state.prestigeUpgrades,
         gold: state.gold,
         gems: state.gems
       });
     } catch (e) {
-      console.error('[DEBUG Save] Failed to save game state:', e);
+      console.error('[DEBUG Save ERROR] Failed to save game state:', e);
     }
   }
 
@@ -249,19 +249,17 @@ Game.State = (function () {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) {
-        console.log('[DEBUG Load] No save key found in localStorage.');
+        console.warn('[DEBUG Load] No save key found in localStorage.');
         return false;
       }
 
       const loaded = JSON.parse(raw);
-      console.log('[DEBUG Load] Raw JSON loaded from localStorage:', loaded);
       
       state.gold = loaded.gold ?? 0;
       state.gems = loaded.gems ?? 0;
       state.level = loaded.level ?? 1;
       state.lastSaveTime = loaded.lastSaveTime || Date.now();
 
-      // Deep restore objects
       state.globalUpgrades = loaded.globalUpgrades || {};
       state.prestigeUpgrades = loaded.prestigeUpgrades || {};
       state.achievementsUnlocked = loaded.achievementsUnlocked || {};
@@ -277,14 +275,14 @@ Game.State = (function () {
       if (loaded.stats) Object.assign(state.stats, loaded.stats);
       if (loaded.settings) Object.assign(state.settings, loaded.settings);
 
-      console.log('[DEBUG Load] State successfully restored in memory:', {
+      console.warn('[DEBUG Load SUCCESS] Restored state:', {
         globalUpgrades: state.globalUpgrades,
         prestigeUpgrades: state.prestigeUpgrades
       });
 
       return true;
     } catch (e) {
-      console.error('[DEBUG Load] Failed to parse save:', e);
+      console.error('[DEBUG Load ERROR] Failed to parse save:', e);
       return false;
     }
   }
@@ -311,7 +309,7 @@ Game.State = (function () {
   }
 
   function hardReset() {
-    console.log('[DEBUG State] Performing HARD RESET');
+    console.warn('[DEBUG State] Performing HARD RESET');
     state = createDefaultState();
     if (isStorageAvailable()) {
       localStorage.removeItem(STORAGE_KEY);
@@ -319,10 +317,8 @@ Game.State = (function () {
     save();
   }
 
-  // Initialize load automatically on startup
-  load();
-
   return {
+    init: load, // Restores init method expected by main.js
     get,
     costFor,
     globalUpgradeLevel,
