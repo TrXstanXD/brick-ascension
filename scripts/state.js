@@ -1,343 +1,320 @@
 // ============================================================
-// STATE.JS - Central game state, economy, prestige, achievements, persistence
+// STATE.JS - Primary state holder, persistence, upgrade math
 // ============================================================
 window.Game = window.Game || {};
 
 Game.State = (function () {
-  const U = Game.Util;
-  const SAVE_KEY = 'idleBreakoutSave_v1';
+  const STORAGE_KEY = 'idle_breakout_save_v1';
 
-  function freshBalls() {
-    const out = {};
+  let state = createDefaultState();
+
+  function createDefaultState() {
+    const balls = {};
     Game.BALL_ORDER.forEach((id) => {
       const def = Game.BALL_TYPES[id];
-      out[id] = {
-        unlocked: def.unlockCost === 0,
-        dmgLevel: 0,
-        count: def.baseCount,
-        dmgCost: 25,
-        countCost: def.unlockCost === 0 ? 40 : def.unlockCost * 1.4
+      balls[id] = {
+        unlocked: id === 'basic',
+        count: id === 'basic' ? 1 : 0,
+        dmgLevel: 1,
+        countCost: def.baseCost,
+        dmgCost: def.baseDmgCost
       };
     });
-    return out;
-  }
 
-  function defaultState() {
     return {
       version: 1,
-      gold: 20,
+      gold: 0,
       gems: 0,
       level: 1,
-      balls: freshBalls(),
-      globalUpgrades: {}, // id -> level
-      prestigeUpgrades: {}, // id -> level
-      achievementsUnlocked: {}, // id -> true
-      bonuses: { // permanent flat bonuses earned from achievements
-        damageMultFlat: 0, goldMultFlat: 0, critMultFlat: 0, gemGainFlat: 0, offlineMultFlat: 0
-      },
-      skills: { meteor: { lastUsed: 0 }, goldrain: { lastUsed: 0 }, frenzy: { lastUsed: 0 }, nuke: { lastUsed: 0 } },
-      frenzyUntil: 0,
-      settings: {
-        sfxVolume: 0.5, musicVolume: 0.3, particles: true, screenShake: true,
-        showDamageNumbers: true, autosaveSec: 10, fpsCap: 60
-      },
-      stats: {
-        bricksDestroyed: 0, totalGoldEarned: 0, runGoldEarned: 0, totalGoldSpent: 0, critHits: 0,
-        bossesKilled: 0, treasureBricksDestroyed: 0, explosiveBricksDestroyed: 0,
-        upgradesBought: 0, prestigeCount: 0, playTimeSec: 0, runTimeSec: 0,
-        biggestHit: 0, ballsSpawned: 0
-      },
       lastSaveTime: Date.now(),
-      lastActiveTime: Date.now(),
-      createdAt: Date.now()
+      balls: balls,
+      globalUpgrades: {},   // Map of upgrade_id -> level
+      prestigeUpgrades: {}, // Map of prestige_id -> level
+      achievementsUnlocked: {},
+      stats: {
+        totalGoldEarned: 0,
+        totalGoldSpent: 0,
+        bricksDestroyed: 0,
+        treasureBricksDestroyed: 0,
+        explosiveBricksDestroyed: 0,
+        bossesKilled: 0,
+        critHits: 0,
+        biggestHit: 0,
+        ballsSpawned: 0,
+        upgradesBought: 0,
+        prestigeCount: 0,
+        playTimeSec: 0,
+        runTimeSec: 0
+      },
+      settings: {
+        sfxVolume: 0.8,
+        musicVolume: 0.5,
+        particles: true,
+        screenShake: true,
+        showDamageNumbers: true,
+        autosaveSec: 10
+      }
     };
   }
 
-  let s = null;
+  // ---------------- GETTERS ----------------
+  function get() { return state; }
 
-  function get() { return s; }
-
-  function init() {
-    const loaded = load();
-    s = loaded || defaultState();
-    Game._offlineResult = applyOfflineProgress();
+  function costFor(baseCost, mult, level) {
+    return Math.ceil(baseCost * Math.pow(mult, level));
   }
 
-  // ---------------- computed multipliers ----------------
-  function globalUpgradeLevel(id) { return s.globalUpgrades[id] || 0; }
-  function prestigeUpgradeLevel(id) { return s.prestigeUpgrades[id] || 0; }
-
-  function computeGlobalStat(statName) {
-    let val = 0;
-    Game.GLOBAL_UPGRADES.filter(u => u.stat === statName).forEach((u) => {
-      const lvl = globalUpgradeLevel(u.id);
-      let v = lvl * u.perLevel;
-      if (u.cap !== undefined) v = Math.min(v, u.cap);
-      val += v;
-    });
-    return val;
+  function globalUpgradeLevel(id) {
+    return state.globalUpgrades[id] || 0;
   }
 
-  function computePrestigeStat(statName) {
-    let val = 0;
-    Game.PRESTIGE_UPGRADES.filter(u => u.stat === statName).forEach((u) => {
-      const lvl = prestigeUpgradeLevel(u.id);
-      val += lvl * u.perLevel;
-    });
-    return val;
+  function prestigeUpgradeLevel(id) {
+    return state.prestigeUpgrades[id] || 0;
   }
 
-  function damageMultiplier() {
-    let m = 1 + computeGlobalStat('damageMult') + s.bonuses.damageMultFlat + computePrestigeStat('gemDamageMult');
-    if (Date.now() < s.frenzyUntil) m *= 1.5;
-    return m;
-  }
-  function goldMultiplier() {
-    return 1 + computeGlobalStat('goldMult') + s.bonuses.goldMultFlat + computePrestigeStat('gemGoldMult');
-  }
-  function critChance() { return U.clamp(computeGlobalStat('critChance'), 0, 0.75); }
-  function critMultiplier() { return 2 + computeGlobalStat('critMult') + s.bonuses.critMultFlat; }
-  function speedMultiplier() { return 1 + computeGlobalStat('speedMult'); }
-  function fireRateMultiplier() { return U.clamp(1 - computeGlobalStat('fireRateMult'), 0.3, 1); }
-  function offlineEfficiency() { return U.clamp(0.2 + computeGlobalStat('offlineMult') + s.bonuses.offlineMultFlat, 0, 1); }
-  function brickHpScaleReduction() { return computeGlobalStat('brickWeaken'); }
-  function maxBallSlotsBonus() { return computePrestigeStat('gemBallSlots'); }
-
+  // ---------------- CALCULATIONS ----------------
   function ballDamage(id) {
     const def = Game.BALL_TYPES[id];
-    const b = s.balls[id];
-    const base = def.baseDamage * Math.pow(1.13, b.dmgLevel);
-    return base * damageMultiplier();
+    const b = state.balls[id];
+    if (!b || !b.unlocked) return 0;
+
+    let dmg = def.baseDmg + (b.dmgLevel - 1) * def.dmgStep;
+
+    // Apply global upgrade multipliers
+    const gPowerLvl = globalUpgradeLevel('ball_power');
+    if (gPowerLvl > 0) {
+      const u = Game.GLOBAL_UPGRADES.find(x => x.id === 'ball_power');
+      if (u) dmg *= (1 + gPowerLvl * u.perLevel);
+    }
+
+    // Apply prestige upgrade multipliers
+    const pPowerLvl = prestigeUpgradeLevel('p_ball_power');
+    if (pPowerLvl > 0) {
+      const u = Game.PRESTIGE_UPGRADES.find(x => x.id === 'p_ball_power');
+      if (u) dmg *= (1 + pPowerLvl * u.perLevel);
+    }
+
+    return Math.max(1, Math.round(dmg));
   }
 
-  // ---------------- purchases ----------------
-  function costFor(base, mult, level) { return Math.ceil(base * Math.pow(mult, level)); }
+  // ---------------- PURCHASES ----------------
+  function buyBallCount(id) {
+    const b = state.balls[id];
+    const def = Game.BALL_TYPES[id];
+    if (!b) return false;
 
-  function buyBallDamage(id) {
-    const b = s.balls[id];
-    if (!b.unlocked) return false;
-    const cost = Math.ceil(b.dmgCost);
-    if (s.gold < cost) return false;
-    s.gold -= cost;
-    s.stats.totalGoldSpent += cost;
-    b.dmgLevel++;
-    b.dmgCost = Math.ceil(b.dmgCost * 1.14);
-    s.stats.upgradesBought++;
+    if (!b.unlocked) {
+      if (state.gold < def.unlockCost) return false;
+      state.gold -= def.unlockCost;
+      state.stats.totalGoldSpent += def.unlockCost;
+      b.unlocked = true;
+      b.count = 1;
+      b.countCost = Math.ceil(def.baseCost * def.costMult);
+      state.stats.upgradesBought++;
+      save();
+      return true;
+    }
+
+    if (state.gold < b.countCost) return false;
+    state.gold -= b.countCost;
+    state.stats.totalGoldSpent += b.countCost;
+    b.count++;
+    b.countCost = Math.ceil(b.countCost * def.costMult);
+    state.stats.upgradesBought++;
+    save();
     return true;
   }
 
-  function buyBallCount(id) {
-    const b = s.balls[id];
+  function buyBallDamage(id) {
+    const b = state.balls[id];
     const def = Game.BALL_TYPES[id];
-    if (!b.unlocked) {
-      if (s.gold < def.unlockCost) return false;
-      s.gold -= def.unlockCost;
-      s.stats.totalGoldSpent += def.unlockCost;
-      b.unlocked = true;
-      return true;
-    }
-    const max = def.baseCount + 19 + maxBallSlotsBonus();
-    if (b.count >= max) return false;
-    const cost = Math.ceil(b.countCost);
-    if (s.gold < cost) return false;
-    s.gold -= cost;
-    s.stats.totalGoldSpent += cost;
-    b.count++;
-    b.countCost = Math.ceil(b.countCost * 1.35);
-    s.stats.upgradesBought++;
+    if (!b || !b.unlocked) return false;
+
+    if (state.gold < b.dmgCost) return false;
+    state.gold -= b.dmgCost;
+    state.stats.totalGoldSpent += b.dmgCost;
+    b.dmgLevel++;
+    b.dmgCost = Math.ceil(b.dmgCost * def.costMult);
+    state.stats.upgradesBought++;
+    save();
     return true;
   }
 
   function buyGlobalUpgrade(id) {
-    const def = Game.GLOBAL_UPGRADES.find(u => u.id === id);
-    if (!def) return false;
+    const u = Game.GLOBAL_UPGRADES.find(x => x.id === id);
+    if (!u) return false;
+
     const lvl = globalUpgradeLevel(id);
-    if (def.cap !== undefined && lvl * def.perLevel >= def.cap) return false;
-    const cost = costFor(def.baseCost, def.costMult, lvl);
-    if (s.gold < cost) return false;
-    s.gold -= cost;
-    s.stats.totalGoldSpent += cost;
-    s.globalUpgrades[id] = lvl + 1;
-    s.stats.upgradesBought++;
+    if (u.cap !== undefined && lvl * u.perLevel >= u.cap) return false;
+
+    const cost = costFor(u.baseCost, u.costMult, lvl);
+    if (state.gold < cost) return false;
+
+    state.gold -= cost;
+    state.stats.totalGoldSpent += cost;
+    state.globalUpgrades[id] = lvl + 1;
+    state.stats.upgradesBought++;
+    save();
     return true;
   }
 
   function buyPrestigeUpgrade(id) {
-    const def = Game.PRESTIGE_UPGRADES.find(u => u.id === id);
-    if (!def) return false;
+    const u = Game.PRESTIGE_UPGRADES.find(x => x.id === id);
+    if (!u) return false;
+
     const lvl = prestigeUpgradeLevel(id);
-    const cost = costFor(def.baseCost, def.costMult, lvl);
-    if (s.gems < cost) return false;
-    s.gems -= cost;
-    s.prestigeUpgrades[id] = lvl + 1;
+    const cost = costFor(u.baseCost, u.costMult, lvl);
+    if (state.gems < cost) return false;
+
+    state.gems -= cost;
+    state.prestigeUpgrades[id] = lvl + 1;
+    save();
     return true;
   }
 
-  // ---------------- prestige ----------------
+  // ---------------- PRESTIGE RESET ----------------
   function gemsOnPrestige() {
-  return Math.floor(Math.sqrt(Math.max(0, s.stats.runGoldEarned || 0) / 5e5));
-}
+    // 1 Gem per 100,000 total gold earned
+    const earned = state.stats.totalGoldEarned || 0;
+    const calc = Math.floor(earned / 100000);
+    return Math.max(0, calc);
+  }
 
   function doPrestige() {
-  const gained = gemsOnPrestige();
-  if (gained < 1) return false;
-  const keep = {
-    gems: s.gems + gained + Math.floor(gained * s.bonuses.gemGainFlat),
-    prestigeUpgrades: s.prestigeUpgrades,
-    achievementsUnlocked: s.achievementsUnlocked,
-    bonuses: s.bonuses,
-    settings: s.settings,
-    stats: s.stats,
-    createdAt: s.createdAt
-  };
-  const fresh = defaultState();
-  fresh.gems = keep.gems;
-  fresh.prestigeUpgrades = keep.prestigeUpgrades;
-  fresh.achievementsUnlocked = keep.achievementsUnlocked;
-  fresh.bonuses = keep.bonuses;
-  fresh.settings = keep.settings;
-  fresh.stats = keep.stats;
-  fresh.stats.prestigeCount++;
-  fresh.stats.runTimeSec = 0;
-  fresh.stats.runGoldEarned = 0; // Reset run gold on ascension
-  fresh.createdAt = keep.createdAt;
-  fresh.gold = 20 + computePrestigeStatWith(fresh, 'gemStartGold');
-  s = fresh;
-  return true;
-}
+    const gain = gemsOnPrestige();
+    if (gain < 1) return false;
 
-  function computePrestigeStatWith(state, statName) {
-    let val = 0;
-    Game.PRESTIGE_UPGRADES.filter(u => u.stat === statName).forEach((u) => {
-      const lvl = state.prestigeUpgrades[u.id] || 0;
-      val += lvl * u.perLevel;
+    state.gems += gain;
+    state.gold = 0;
+    state.level = 1;
+    state.globalUpgrades = {}; // Reset global gold upgrades
+
+    // Reset ball levels to baseline
+    Game.BALL_ORDER.forEach((id) => {
+      const def = Game.BALL_TYPES[id];
+      state.balls[id] = {
+        unlocked: id === 'basic',
+        count: id === 'basic' ? 1 : 0,
+        dmgLevel: 1,
+        countCost: def.baseCost,
+        dmgCost: def.baseDmgCost
+      };
     });
-    return val;
+
+    state.stats.prestigeCount++;
+    state.stats.runTimeSec = 0;
+    save();
+    return true;
   }
 
-  // ---------------- achievements ----------------
-  function checkAchievements(onUnlock) {
-    Game.ACHIEVEMENTS.forEach((a) => {
-      if (s.achievementsUnlocked[a.id]) return;
-      let ok = false;
-      try { ok = !!a.check(s); } catch (e) { ok = false; }
-      if (ok) {
-        s.achievementsUnlocked[a.id] = true;
-        try { a.reward(s); } catch (e) {}
-        if (onUnlock) onUnlock(a);
-      }
-    });
-  }
-
-  // ---------------- gold / gain ----------------
-  function addGold(amount) {
-  const g = amount * goldMultiplier();
-  s.gold += g;
-  s.stats.totalGoldEarned += g;
-  s.stats.runGoldEarned = (s.stats.runGoldEarned || 0) + g;
-  return g;
-}
-
-  // approximate gold-per-second for offline calc / skill use, based on recent brick value
-  function estimatedGps() {
-    if (!Game._lastGpsSample) return 0;
-    return Game._lastGpsSample;
-  }
-
-  // ---------------- save / load ----------------
-  function serialize() {
-    s.lastSaveTime = Date.now();
-    return JSON.stringify(s);
-  }
-
+  // ---------------- PERSISTENCE ----------------
   function isStorageAvailable() {
     try {
-      const testKey = '__idleBreakoutStorageTest__';
-      localStorage.setItem(testKey, '1');
-      const ok = localStorage.getItem(testKey) === '1';
-      localStorage.removeItem(testKey);
-      return ok;
-    } catch (e) { return false; }
+      const k = '__test__';
+      localStorage.setItem(k, k);
+      localStorage.removeItem(k);
+      return true;
+    } catch (e) {
+      return false;
+    }
   }
 
   function save() {
+    if (!isStorageAvailable()) return;
+    state.lastSaveTime = Date.now();
     try {
-      localStorage.setItem(SAVE_KEY, serialize());
-      return true;
-    } catch (e) { console.warn('Save failed', e); return false; }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch (e) {
+      console.error('Failed to save game state:', e);
+    }
   }
 
   function load() {
+    if (!isStorageAvailable()) return false;
     try {
-      const raw = localStorage.getItem(SAVE_KEY);
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      return migrate(parsed);
-    } catch (e) { console.warn('Load failed, starting fresh', e); return null; }
-  }
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return false;
 
-  function migrate(parsed) {
-    // shallow-merge onto a default state so new fields introduced later never crash old saves
-    const fresh = defaultState();
-    function deepMerge(target, src) {
-      for (const k in target) {
-        if (src[k] === undefined) continue;
-        if (typeof target[k] === 'object' && target[k] !== null && !Array.isArray(target[k])) {
-          deepMerge(target[k], src[k] || {});
-        } else {
-          target[k] = src[k];
-        }
+      const loaded = JSON.parse(raw);
+      
+      // Basic values
+      state.gold = loaded.gold ?? 0;
+      state.gems = loaded.gems ?? 0;
+      state.level = loaded.level ?? 1;
+      state.lastSaveTime = loaded.lastSaveTime || Date.now();
+
+      // Deep restore objects
+      state.globalUpgrades = loaded.globalUpgrades || {};
+      state.prestigeUpgrades = loaded.prestigeUpgrades || {};
+      state.achievementsUnlocked = loaded.achievementsUnlocked || {};
+
+      if (loaded.balls) {
+        Object.keys(loaded.balls).forEach((id) => {
+          if (state.balls[id]) {
+            Object.assign(state.balls[id], loaded.balls[id]);
+          }
+        });
       }
+
+      if (loaded.stats) Object.assign(state.stats, loaded.stats);
+      if (loaded.settings) Object.assign(state.settings, loaded.settings);
+
+      return true;
+    } catch (e) {
+      console.error('Failed to load save:', e);
+      return false;
     }
-    deepMerge(fresh, parsed);
-    return fresh;
   }
 
   function exportSave() {
-    const data = serialize();
-    const b64 = btoa(unescape(encodeURIComponent(data)));
-    return b64;
+    save();
+    return btoa(JSON.stringify(state));
   }
 
-  function importSave(b64) {
+  function importSave(str) {
     try {
-      const json = decodeURIComponent(escape(atob(b64.trim())));
-      const parsed = JSON.parse(json);
-      s = migrate(parsed);
-      save();
+      const json = atob(str.trim());
+      const data = JSON.parse(json);
+      if (typeof data !== 'object' || data === null) return false;
+
+      state = createDefaultState();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      load();
       return true;
-    } catch (e) { console.warn('Import failed', e); return false; }
+    } catch (e) {
+      console.error('Invalid save string:', e);
+      return false;
+    }
   }
 
   function hardReset() {
-    localStorage.removeItem(SAVE_KEY);
-    s = defaultState();
+    state = createDefaultState();
+    if (isStorageAvailable()) {
+      localStorage.removeItem(STORAGE_KEY);
+    }
+    save();
   }
 
-  // ---------------- offline progress ----------------
-  function applyOfflineProgress() {
-    const now = Date.now();
-    const away = (now - (s.lastActiveTime || now)) / 1000;
-    s.lastActiveTime = now;
-    if (away < 30) return { seconds: 0, gold: 0 };
-    const maxHours = 2 + computePrestigeStat('gemOfflineHours');
-    const cappedSec = Math.min(away, maxHours * 3600);
-    const gps = Game._lastGpsSample || (5 + s.level * 2);
-    const earned = gps * cappedSec * offlineEfficiency();
-    if (earned > 0) addGold(earned);
-    s.stats.playTimeSec += 0; // offline time doesn't count as active playtime
-    return { seconds: cappedSec, gold: earned };
-  }
+  // Initialize load automatically on startup
+  load();
 
   return {
-    get, init, defaultState,
-    globalUpgradeLevel, prestigeUpgradeLevel, computeGlobalStat,
-    damageMultiplier, goldMultiplier, critChance, critMultiplier, speedMultiplier,
-    fireRateMultiplier, offlineEfficiency, brickHpScaleReduction, maxBallSlotsBonus,
-    ballDamage, costFor,
-    buyBallDamage, buyBallCount, buyGlobalUpgrade, buyPrestigeUpgrade,
-    gemsOnPrestige, doPrestige,
-    checkAchievements, addGold, estimatedGps,
-    save, load, exportSave, importSave, hardReset, applyOfflineProgress, isStorageAvailable
+    get,
+    costFor,
+    globalUpgradeLevel,
+    prestigeUpgradeLevel,
+    ballDamage,
+    buyBallCount,
+    buyBallDamage,
+    buyGlobalUpgrade,
+    buyPrestigeUpgrade,
+    gemsOnPrestige,
+    doPrestige,
+    isStorageAvailable,
+    save,
+    load,
+    exportSave,
+    importSave,
+    hardReset
   };
 })();
