@@ -273,12 +273,24 @@ Game.State = (function () {
     return Math.max(1, Math.floor(dmg * damageMultiplier()));
   }
 
+  const MIN_SPAWN_INTERVAL_MS = 50; // practical floor: ~20 spawns/sec/type, any faster is imperceptible
+
   function ballDeployRateSec(typeId) {
     const b = state.balls[typeId];
     const baseMs = (Game.SPAWN_BASE_MS && Game.SPAWN_BASE_MS[typeId]) || 1000;
     const rateLevel = b ? (b.rateLevel || 0) : 0;
-    const mult = Math.max(0.2, 1 - rateLevel * 0.03); // Reduce interval by 3% per upgrade level
-    return (baseMs * mult) / 1000;
+    // Every level shaves another 3.5% off the interval - no early hard floor, it keeps
+    // paying off level after level, right down to the practical spawn-rate minimum.
+    const mult = Math.pow(0.965, rateLevel);
+    const ms = Math.max(MIN_SPAWN_INTERVAL_MS, baseMs * mult);
+    return ms / 1000;
+  }
+
+  function isRateMaxed(typeId) {
+    const b = state.balls[typeId];
+    const baseMs = (Game.SPAWN_BASE_MS && Game.SPAWN_BASE_MS[typeId]) || 1000;
+    const rateLevel = b ? (b.rateLevel || 0) : 0;
+    return (baseMs * Math.pow(0.965, rateLevel)) <= MIN_SPAWN_INTERVAL_MS;
   }
 
   function upgradeBallDmgCost(typeId) {
@@ -333,6 +345,7 @@ Game.State = (function () {
   }
 
   function buyBallRateUpgrade(typeId) {
+    if (isRateMaxed(typeId)) return false;
     const cost = upgradeBallRateCost(typeId);
     if ((state.gold || 0) >= cost) {
       state.gold -= cost;
@@ -446,7 +459,7 @@ Game.State = (function () {
   return {
     init, get, save, load, exportSaveString, importSaveString, hardReset, checkStoragePersistence,
     damageMultiplier, goldMultiplier, speedMultiplier, critChance, critMultiplier, brickHpScaleReduction,
-    getExtraSlots, ballDamage, ballDeployRateSec, upgradeBallDmgCost, upgradeBallCountCost, upgradeBallRateCost,
+    getExtraSlots, ballDamage, ballDeployRateSec, isRateMaxed, upgradeBallDmgCost, upgradeBallCountCost, upgradeBallRateCost,
     buyBallDmgUpgrade, buyBallCountUpgrade, buyBallRateUpgrade, unlockBall,
     getGlobalUpgradeCost, buyGlobalUpgrade, getGemUpgradeCost, buyGemUpgrade,
     getPrestigeGain, prestige, checkAchievements,
