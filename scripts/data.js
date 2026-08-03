@@ -2,7 +2,7 @@
 // DATA.JS - Static game data: ball types, brick types, upgrades, achievements
 // ============================================================
 window.Game = window.Game || {};
-
+Game.SPAWN_BASE_MS = { basic: 900, plasma: 1100, sniper: 1500, poison: 1000, cannon: 2200, scatter: 800 };
 // ---------------- BALL TYPES ----------------
 // Each ball type is a distinct "weapon" with its own AI/behavior.
 Game.BALL_TYPES = {
