@@ -164,6 +164,12 @@ function renderBalls() {
         ? `<span class="spawn-status waiting" style="color: #ff9800; font-weight: bold; font-size: 0.8em; margin-left: 6px;">[WAITING FOR SLOT]</span>`
         : `<span class="spawn-status spawning" style="color: #4caf50; font-weight: bold; font-size: 0.8em; margin-left: 6px;">[SPAWNING]</span>`;
 
+      // Progress bar calculations
+      const progressInfo = Game.Engine?.getSpawnProgress ? Game.Engine.getSpawnProgress(id) : { pct: 0, remainingSec: 0 };
+      const barWidth = isWaiting ? 100 : Math.min(100, Math.max(0, progressInfo.pct));
+      const barColor = isWaiting ? '#ff9800' : (def.color || '#4fc3f7');
+      const timeText = isWaiting ? 'PAUSED' : `${progressInfo.remainingSec.toFixed(1)}s`;
+
       html += `
         <div class="ball-card ${isWaiting ? 'status-waiting' : ''}">
           <div class="ball-card-head">
@@ -176,6 +182,15 @@ function renderBalls() {
             Damage: <strong>${Game.Util.fmt(currentDmg)}</strong> (Lv.${ball.level}) | 
             Deploy Rate: <strong>${currentDeploySec}s</strong>
           </div>
+
+          <!-- Deploy Timer Progress Bar -->
+          <div class="deploy-bar-container" style="background: rgba(0,0,0,0.4); border-radius: 4px; height: 14px; width: 100%; position: relative; margin: 8px 0; overflow: hidden; border: 1px solid rgba(255,255,255,0.1);">
+            <div class="deploy-bar-fill" style="width: ${barWidth}%; background: ${barColor}; height: 100%; transition: width 0.1s linear;"></div>
+            <span style="position: absolute; width: 100%; text-align: center; top: 0; left: 0; line-height: 14px; font-size: 0.7em; font-weight: bold; color: #fff; text-shadow: 0 0 3px #000;">
+              ${timeText}
+            </span>
+          </div>
+
           <div class="ball-actions">
             <button class="btn primary small" data-action="buy-dmg" data-id="${id}" ${s.gold < dmgCost ? 'disabled' : ''}>
               +DMG (${Game.Util.fmt(dmgCost)}g)
