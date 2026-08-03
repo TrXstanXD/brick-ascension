@@ -325,8 +325,8 @@ Game.UI = (function () {
               <button class="btn small" data-action="buy-count" data-id="${id}" ${s.gold < countCost ? 'disabled' : ''}>
                 +Count (${Game.Util.fmt(countCost)}g)
               </button>
-              <button class="btn small" data-action="buy-rate" data-id="${id}" ${s.gold < rateCost ? 'disabled' : ''}>
-                +Rate (${Game.Util.fmt(rateCost)}g)
+              <button class="btn small" data-action="buy-rate" data-id="${id}" ${(Game.State.isRateMaxed(id) || s.gold < rateCost) ? 'disabled' : ''}>
+                ${Game.State.isRateMaxed(id) ? 'MAXED' : `+Rate (${Game.Util.fmt(rateCost)}g)`}
               </button>
             </div>
           </div>
