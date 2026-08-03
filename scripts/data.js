@@ -2,7 +2,7 @@
 // DATA.JS - Static game data: ball types, brick types, upgrades, achievements
 // ============================================================
 window.Game = window.Game || {};
-Game.SPAWN_BASE_MS = { basic: 900, plasma: 1100, sniper: 1500, poison: 1000, cannon: 2200, scatter: 800 };
+Game.SPAWN_BASE_MS = { basic: 900, plasma: 1100, sniper: 1500, poison: 1000, cannon: 2200, scatter: 800, homing: 1300, chain: 1700, void: 2600 };
 // ---------------- BALL TYPES ----------------
 // Each ball type is a distinct "weapon" with its own AI/behavior.
 Game.BALL_TYPES = {
@@ -41,10 +41,28 @@ Game.BALL_TYPES = {
     desc: 'Fragments into smaller shards on its first hit, each dealing damage.',
     baseDamage: 2.4, unlockCost: 800000, color: '#ffd54f', glow: '#fff2b3',
     speed: 7.4, behavior: 'scatter', fragments: 3, baseCount: 1
+  },
+  homing: {
+    id: 'homing', name: 'Homing Ball',
+    desc: 'Curves through the air to hunt down the weakest brick on the field.',
+    baseDamage: 4, unlockCost: 4500000, color: '#40c4ff', glow: '#bde8ff',
+    speed: 6.0, behavior: 'homing', turnRate: 0.09, baseCount: 1
+  },
+  chain: {
+    id: 'chain', name: 'Chain Ball',
+    desc: 'Arcs electricity between nearby bricks on impact, hitting up to 4 targets.',
+    baseDamage: 5, unlockCost: 28000000, color: '#eeff41', glow: '#f9ffb0',
+    speed: 6.6, behavior: 'chain', chainJumps: 4, chainRadius: 140, chainFalloff: 0.72, baseCount: 1
+  },
+  void: {
+    id: 'void', name: 'Void Ball',
+    desc: 'Phases through shields and rips a chunk of a brick\'s max HP straight out of reality.',
+    baseDamage: 6, unlockCost: 180000000, color: '#4a148c', glow: '#b388ff',
+    speed: 3.6, behavior: 'void', voidPct: 0.05, baseCount: 1
   }
 };
 
-Game.BALL_ORDER = ['basic', 'plasma', 'sniper', 'poison', 'cannon', 'scatter'];
+Game.BALL_ORDER = ['basic', 'plasma', 'sniper', 'poison', 'cannon', 'scatter', 'homing', 'chain', 'void'];
 
 // ---------------- BRICK SPECIAL TYPES ----------------
 Game.BRICK_TYPES = {
