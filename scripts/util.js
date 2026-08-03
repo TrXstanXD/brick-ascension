@@ -37,27 +37,47 @@ Game.Util = (function () {
   function randInt(min, max) { return Math.floor(rand(min, max + 1)); }
   function choice(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
-  function weightedChoice(entries) {
-    // entries: [{value, weight}]
-    const total = entries.reduce((a, e) => a + e.weight, 0);
-    let r = Math.random() * total;
-    for (const e of entries) {
-      if (r < e.weight) return e.value;
-      r -= e.weight;
+  function weightedChoice(items) {
+    let sum = items.reduce((a, b) => a + b.weight, 0);
+    let r = Math.random() * sum;
+    for (let i of items) {
+      if (r < i.weight) return i.value;
+      r -= i.weight;
     }
-    return entries[entries.length - 1].value;
-  }
-
-  function getPath(obj, path) {
-    return path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
+    return items[0] ? items[0].value : null;
   }
 
   function circleRectCollide(cx, cy, cr, rx, ry, rw, rh) {
-    const nx = clamp(cx, rx, rx + rw);
-    const ny = clamp(cy, ry, ry + rh);
-    const dx = cx - nx, dy = cy - ny;
-    return (dx * dx + dy * dy) < (cr * cr);
+    let testX = cx, testY = cy;
+    if (cx < rx) testX = rx;
+    else if (cx > rx + rw) testX = rx + rw;
+    if (cy < ry) testY = ry;
+    else if (cy > ry + rh) testY = ry + rh;
+    let distX = cx - testX, distY = cy - testY;
+    return (distX * distX + distY * distY) <= (cr * cr);
   }
 
-  return { fmt, fmtTime, clamp, lerp, rand, randInt, choice, weightedChoice, getPath, circleRectCollide };
+  function getPath(obj, path) {
+    if (!obj || !path) return 0;
+    const parts = path.split('.');
+    let curr = obj;
+    for (const p of parts) {
+      if (curr === undefined || curr === null) return 0;
+      curr = curr[p];
+    }
+    return curr !== undefined && curr !== null ? curr : 0;
+  }
+
+  return {
+    fmt,
+    fmtTime,
+    clamp,
+    lerp,
+    rand,
+    randInt,
+    choice,
+    weightedChoice,
+    circleRectCollide,
+    getPath
+  };
 })();
