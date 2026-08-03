@@ -1,6 +1,15 @@
 # Brick Ascension, an Idle Breakout clone
 
-A self-contained HTML/CSS/JS idle game. No build step, no dependencies.
+A self-contained HTML/CSS/JS idle game. No build step, no dependencies. (might change)
+
+## v1.1 changes
+
+- Fixed toast notifications never actually becoming visible (affected every notification, not just the Ascend button).
+- Ascending now tells you why it's unavailable instead of silently doing nothing.
+- Settings tab is now fully wired up: volume sliders, particle/screen-shake/damage-number toggles, and the autosave interval all load, save, and take effect (Screen Shake previously had no effect at all — it now actually shakes the canvas on crits, boss kills, and explosive detonations).
+- The powerups bar below the game canvas (Meteor Strike, Gold Rain, Ball Frenzy, Brick Nuke) is rendered again, with lock/cooldown state, and refreshes live.
+- Added offline progress: earnings now accrue while the tab is closed (based on your recent gold/sec, capped by your Chrono Cache prestige upgrade), with a "Welcome Back" summary on return.
+- Added three new endgame ball types: **Homing Ball** (curves toward the weakest brick), **Chain Ball** (arcs between up to 4 nearby bricks), and **Void Ball** (ignores shields, rips bonus true damage as a % of a brick's max HP).
 
 ## Playing it
 
@@ -13,7 +22,7 @@ games persist data. `localStorage` works perfectly once this is hosted on the we
 (GitHub Pages, itch.io, any `https://` host) — nothing to do there, it just works.
 
 The catch is **local testing**: if you open `index.html` by double-clicking it (a
-`file://` URL), some browsers, Firefox in particular, and some Chrome configurations,
+`file://` URL), some browsers — Firefox in particular, and some Chrome configurations —
 either block `localStorage` entirely or treat every page load as a brand-new,
 unrelated origin. In that situation your save will NOT survive a refresh, no matter
 how the save code is written; the browser itself is preventing persistence.
@@ -44,7 +53,7 @@ npx serve .
 3. Visit the generated `https://<username>.github.io/<repo>/` URL.
 
 Once served over `https://`, `localStorage` behaves normally and saves persist across
-refreshes and browser restarts, exactly as expected, the warning banner won't appear.
+refreshes and browser restarts, exactly as expected — the warning banner won't appear.
 
 ## Project structure
 
