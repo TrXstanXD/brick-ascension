@@ -399,7 +399,6 @@ Game.UI = (function () {
     renderHeader();
     renderActiveTab();
     
-    // Periodically update active UI tab and top bar resources
     setInterval(() => {
       renderHeader();
       renderActiveTab();
