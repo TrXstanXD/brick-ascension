@@ -330,22 +330,10 @@ Game.UI = (function () {
     const s = Game.State.get();
     const ballOrder = Game.BALL_ORDER || ['basic', 'plasma', 'sniper', 'poison', 'cannon', 'scatter'];
     const extraSlots = Game.State.getExtraSlots ? Game.State.getExtraSlots() : 0;
-// Inside renderBalls() in UI.js:
-const rateCost = Game.State.getGlobalUpgradeCost ? Game.State.getGlobalUpgradeCost({ id: 'fireRate', baseCost: 120, costMult: 1.16 }) : 120;
+    const rateCost = Game.State.getGlobalUpgradeCost 
+      ? Game.State.getGlobalUpgradeCost({ id: 'fireRate', baseCost: 120, costMult: 1.16 }) 
+      : 120;
 
-html += `
-  <div class="ball-actions">
-    <button class="btn primary small" data-action="buy-dmg" data-id="${id}" ${s.gold < dmgCost ? 'disabled' : ''}>
-      +DMG (${formatNum(dmgCost)}g)
-    </button>
-    <button class="btn small" data-action="buy-count" data-id="${id}" ${s.gold < countCost ? 'disabled' : ''}>
-      +Count (${formatNum(countCost)}g)
-    </button>
-    <button class="btn small" data-action="buy-global-upg" data-id="fireRate" ${s.gold < rateCost ? 'disabled' : ''}>
-      +Deploy Rate (${formatNum(rateCost)}g)
-    </button>
-  </div>
-`;
     let html = '';
     ballOrder.forEach((id) => {
       const ball = s.balls[id] || { unlocked: false, level: 1, count: 0 };
@@ -371,6 +359,9 @@ html += `
               </button>
               <button class="btn small" data-action="buy-count" data-id="${id}" ${s.gold < countCost ? 'disabled' : ''}>
                 +Count (${formatNum(countCost)}g)
+              </button>
+              <button class="btn small" data-action="buy-global-upg" data-id="fireRate" ${s.gold < rateCost ? 'disabled' : ''}>
+                +Deploy Rate (${formatNum(rateCost)}g)
               </button>
             </div>
           </div>
