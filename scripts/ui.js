@@ -1,4 +1,4 @@
-// ============================================================ 
+// ============================================================
 // UI.JS - Tab management, arsenal, upgrades, achievements & stats
 // ============================================================
 window.Game = window.Game || {};
@@ -16,22 +16,13 @@ Game.UI = (function () {
     return formatted + suffixes[i];
   }
 
-  function getTabContainer() {
-    return (
-      document.querySelector('#tab-content') ||
-      document.querySelector('.tab-content') ||
-      document.querySelector('.panel-content') ||
-      document.querySelector('.side-panel') ||
-      document.querySelector('.right-panel')
-    );
-  }
-
   function init() {
     setupTabs();
     bindEvents();
     renderHeader();
     renderActiveTab();
 
+    // Auto-render loop
     setInterval(() => {
       renderHeader();
       renderActiveTab();
@@ -39,25 +30,22 @@ Game.UI = (function () {
   }
 
   function setupTabs() {
-    // Look for tab buttons by data attribute, class, or plain buttons inside the right panel
-    const navButtons = document.querySelectorAll(
-      '[data-tab], .tab-btn, .tab-button, button'
-    );
+    // Find all potential tab buttons
+    const navButtons = document.querySelectorAll('button, .tab-btn, [data-tab]');
 
     navButtons.forEach((btn) => {
-      const label = (btn.getAttribute('data-tab') || btn.innerText || '')
-        .toLowerCase()
-        .trim();
+      const text = (btn.getAttribute('data-tab') || btn.innerText || '').toLowerCase().trim();
 
-      if (['balls', 'upgrades', 'ascend', 'achievements', 'stats', 'settings'].includes(label)) {
-        btn.setAttribute('data-tab-name', label);
-        btn.addEventListener('click', (e) => {
+      if (['balls', 'upgrades', 'ascend', 'achievements', 'stats', 'settings'].includes(text)) {
+        btn.setAttribute('data-tab-id', text);
+        
+        btn.onclick = (e) => {
           e.preventDefault();
-          activeTab = label;
+          activeTab = text;
 
-          // Update active styling
-          document.querySelectorAll('[data-tab-name]').forEach((b) => {
-            if (b.getAttribute('data-tab-name') === label) {
+          // Update active styles across tab buttons
+          document.querySelectorAll('[data-tab-id]').forEach((b) => {
+            if (b.getAttribute('data-tab-id') === activeTab) {
               b.classList.add('active');
             } else {
               b.classList.remove('active');
@@ -65,7 +53,7 @@ Game.UI = (function () {
           });
 
           renderActiveTab();
-        });
+        };
       }
     });
   }
@@ -104,35 +92,46 @@ Game.UI = (function () {
     if (elLevel) elLevel.textContent = 'Level ' + (s.level || 1);
   }
 
-  function renderActiveTab() {
-    let container = getTabContainer();
+  function getTargetContainer() {
+    // Try to find the panel where content should be injected
+    let target = document.querySelector('#tab-content') || 
+                 document.querySelector('.tab-content') || 
+                 document.querySelector('.panel-content') || 
+                 document.querySelector('.side-panel') || 
+                 document.querySelector('.right-panel');
 
-    // If no direct panel container is found, inject or target content area next to tabs
-    if (!container) return;
+    if (!target) return null;
 
-    // Preserve top tab buttons if container wraps everything
-    let contentArea = container.querySelector('.tab-body-area');
-    if (!contentArea) {
-      contentArea = document.createElement('div');
-      contentArea.className = 'tab-body-area';
-      contentArea.style.marginTop = '12px';
-      container.appendChild(contentArea);
+    // If target contains the tab buttons at top, create or grab dedicated body container
+    let body = target.querySelector('#tab-body');
+    if (!body) {
+      body = document.createElement('div');
+      body.id = 'tab-body';
+      body.style.marginTop = '16px';
+      target.appendChild(body);
     }
-
-    if (activeTab === 'balls') renderBalls(contentArea);
-    else if (activeTab === 'upgrades') renderUpgrades(contentArea);
-    else if (activeTab === 'achievements') renderAchievements(contentArea);
-    else if (activeTab === 'stats') renderStats(contentArea);
-    else if (activeTab === 'ascend') renderAscend(contentArea);
-    else if (activeTab === 'settings') renderSettings(contentArea);
+    return body;
   }
 
-  // --- ARSENAL TAB ---
+  function renderActiveTab() {
+    const container = getTargetContainer();
+    if (!container) return;
+
+    if (activeTab === 'balls') renderBalls(container);
+    else if (activeTab === 'upgrades') renderUpgrades(container);
+    else if (activeTab === 'achievements') renderAchievements(container);
+    else if (activeTab === 'stats') renderStats(container);
+    else if (activeTab === 'ascend') renderAscend(container);
+    else if (activeTab === 'settings') renderSettings(container);
+  }
+
+  // --- BALLS ARSENAL TAB ---
   function renderBalls(container) {
     const s = Game.State.get();
     const ballOrder = Game.BALL_ORDER || ['basic', 'plasma', 'sniper', 'poison', 'cannon', 'scatter'];
 
-    let html = '<div style="display:flex; flex-direction:column; gap:12px;">';
+    let html = '<h3 style="color:#fff; margin:0 0 12px 0; font-size:16px;">Ball Arsenal</h3>';
+    html += '<div style="display:flex; flex-direction:column; gap:12px;">';
 
     ballOrder.forEach((id) => {
       const ball = s.balls[id] || { unlocked: false, level: 1, count: 0 };
@@ -181,7 +180,7 @@ Game.UI = (function () {
   }
 
   function renderUpgrades(container) {
-    container.innerHTML = '<div style="padding:12px; color:#aaa;">Upgrades unlocked at higher levels!</div>';
+    container.innerHTML = '<h3 style="color:#fff; margin:0 0 8px 0;">Upgrades</h3><p style="color:#aaa; font-size:13px;">Global upgrades unlocked at higher levels!</p>';
   }
 
   function renderAchievements(container) {
@@ -191,16 +190,17 @@ Game.UI = (function () {
       { id: 'level_10', name: 'Getting Started', desc: 'Reach Level 10' }
     ];
 
-    let html = '<div style="display:flex; flex-direction:column; gap:8px;">';
+    let html = '<h3 style="color:#fff; margin:0 0 12px 0;">Achievements</h3>';
+    html += '<div style="display:flex; flex-direction:column; gap:8px;">';
     list.forEach((ach) => {
       const unlocked = !!s.achievements[ach.id];
       html += `
         <div style="background:${unlocked ? '#1b2a26' : '#141428'}; border:1px solid ${unlocked ? '#10b981' : '#2e2e54'}; padding:10px; border-radius:6px; display:flex; justify-content:space-between; align-items:center;">
           <div>
-            <strong style="color:${unlocked ? '#10b981' : '#aaa'};">${ach.name}</strong>
+            <strong style="color:${unlocked ? '#10b981' : '#aaa'}; font-size:14px;">${ach.name}</strong>
             <div style="font-size:12px; color:#71717a;">${ach.desc}</div>
           </div>
-          <span style="font-size:12px; font-weight:bold; color:${unlocked ? '#10b981' : '#52525b'};">
+          <span style="font-size:11px; font-weight:bold; color:${unlocked ? '#10b981' : '#52525b'};">
             ${unlocked ? '✓ UNLOCKED' : 'LOCKED'}
           </span>
         </div>
@@ -213,23 +213,24 @@ Game.UI = (function () {
   function renderStats(container) {
     const st = Game.State.get().stats || {};
     container.innerHTML = `
-      <div style="background:#1e1e38; border:1px solid #2e2e54; padding:12px; border-radius:8px; color:#fff;">
-        <h3 style="margin:0 0 8px 0; color:#ffd700; font-size:14px;">Statistics</h3>
-        <div style="display:flex; flex-direction:column; gap:6px; font-size:12px; color:#ccc;">
-          <div>Total Gold: <strong style="color:#ffd700;">${formatNum(st.totalGoldEarned || 0)}</strong></div>
+      <h3 style="color:#fff; margin:0 0 12px 0;">Statistics</h3>
+      <div style="background:#1e1e38; border:1px solid #2e2e54; padding:14px; border-radius:8px; color:#fff;">
+        <div style="display:flex; flex-direction:column; gap:8px; font-size:13px; color:#ccc;">
+          <div>Total Gold Earned: <strong style="color:#ffd700;">${formatNum(st.totalGoldEarned || 0)}</strong></div>
           <div>Bricks Destroyed: <strong>${formatNum(st.bricksDestroyed || 0)}</strong></div>
-          <div>Time Played: <strong>${Math.floor((st.playTimeSec || 0) / 60)}m</strong></div>
+          <div>Bosses Defeated: <strong>${formatNum(st.bossesKilled || 0)}</strong></div>
+          <div>Time Played: <strong>${Math.floor((st.playTimeSec || 0) / 60)}m ${Math.floor((st.playTimeSec || 0) % 60)}s</strong></div>
         </div>
       </div>
     `;
   }
 
   function renderAscend(container) {
-    container.innerHTML = '<div style="padding:12px; color:#aaa;">Ascension requires Level 50.</div>';
+    container.innerHTML = '<h3 style="color:#fff; margin:0 0 8px 0;">Ascend</h3><p style="color:#aaa; font-size:13px;">Prestige unlocks at Level 50.</p>';
   }
 
   function renderSettings(container) {
-    container.innerHTML = '<div style="padding:12px; color:#aaa;">Settings: SFX Enabled</div>';
+    container.innerHTML = '<h3 style="color:#fff; margin:0 0 8px 0;">Settings</h3><p style="color:#aaa; font-size:13px;">Sound Effects: Enabled</p>';
   }
 
   return { init, renderHeader, renderActiveTab };
