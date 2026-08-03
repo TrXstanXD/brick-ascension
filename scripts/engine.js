@@ -41,7 +41,6 @@ Game.Engine = (function () {
   let lastTime = 0;
   let gpsAccumulator = { gold: 0, time: 0 };
 
-  // Helper fallbacks for state multipliers
   function getStatMult(fnName, defVal) {
     if (Game.State && typeof Game.State[fnName] === 'function') {
       const val = Game.State[fnName]();
@@ -55,26 +54,26 @@ Game.Engine = (function () {
     if (Game.State && typeof Game.State.ballDamage === 'function') {
       baseDmg = Game.State.ballDamage(typeId);
     }
-    // Fallback if state returns 0 or invalid number
     if (!baseDmg || isNaN(baseDmg) || baseDmg <= 0) {
       const s = Game.State ? Game.State.get() : null;
       const bLevel = s && s.balls && s.balls[typeId] ? (s.balls[typeId].level || 1) : 1;
       baseDmg = Math.pow(1.15, bLevel - 1) * (typeId === 'plasma' ? 1.5 : 1);
     }
-    const mult = getStatMult('damageMultiplier', 1);
-    return Math.max(1, baseDmg * mult);
+    return Math.max(1, baseDmg);
   }
 
   function addGold(amount) {
     if (isNaN(amount) || amount <= 0) amount = 1;
+    const mult = getStatMult('goldMultiplier', 1);
+    const finalAmount = amount * mult;
     const s = Game.State.get();
-    s.gold = (s.gold || 0) + amount;
+    s.gold = (s.gold || 0) + finalAmount;
     s.stats = s.stats || {};
-    s.stats.totalGoldEarned = (s.stats.totalGoldEarned || 0) + amount;
-    return amount;
+    s.stats.totalGoldEarned = (s.stats.totalGoldEarned || 0) + finalAmount;
+    return finalAmount;
   }
 
-  const listeners = { levelUp: [], achievement: [], notify: [], goldGain: null };
+  const listeners = { levelUp: [], achievement: [], notify: [] };
   function on(event, fn) { if (listeners[event]) listeners[event].push(fn); }
   function emit(event, payload) { (listeners[event] || []).forEach(fn => fn(payload)); }
 
@@ -82,25 +81,37 @@ Game.Engine = (function () {
   let audioCtx = null;
   function ensureAudio() {
     if (!audioCtx) {
-      try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { audioCtx = null; }
+      try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      } catch (e) {
+        audioCtx = null;
+      }
+    }
+    if (audioCtx && audioCtx.state === 'suspended') {
+      audioCtx.resume();
     }
     return audioCtx;
   }
+
   function beep(freq, dur, type, vol) {
     const s = Game.State.get();
-    if (!s.settings || !s.settings.sfxVolume) return;
+    if (!s.settings || s.settings.sfxVolume <= 0) return;
     const ac = ensureAudio();
     if (!ac) return;
-    const osc = ac.createOscillator();
-    const gain = ac.createGain();
-    osc.type = type || 'sine';
-    osc.frequency.value = freq;
-    gain.gain.value = (vol !== undefined ? vol : 0.15) * s.settings.sfxVolume;
-    osc.connect(gain); gain.connect(ac.destination);
-    osc.start();
-    gain.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + dur);
-    osc.stop(ac.currentTime + dur);
+    try {
+      const osc = ac.createOscillator();
+      const gain = ac.createGain();
+      osc.type = type || 'sine';
+      osc.frequency.value = freq;
+      gain.gain.value = (vol !== undefined ? vol : 0.15) * s.settings.sfxVolume;
+      osc.connect(gain);
+      gain.connect(ac.destination);
+      osc.start();
+      gain.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + dur);
+      osc.stop(ac.currentTime + dur);
+    } catch (e) {}
   }
+
   const SFX = {
     hit: () => beep(220 + Math.random() * 120, 0.08, 'square', 0.05),
     crit: () => beep(500, 0.12, 'sawtooth', 0.08),
@@ -117,11 +128,20 @@ Game.Engine = (function () {
     if (!canvas) {
       canvas = document.createElement('canvas');
       canvas.id = 'game-canvas';
-      (document.querySelector('.canvas-container') || document.body).appendChild(canvas);
+      (document.querySelector('#canvas-wrap') || document.body).appendChild(canvas);
     }
 
     ctx = canvas.getContext('2d');
     if (!ctx) return;
+
+    // Attach user interaction listeners to resume WebAudio Context
+    const unlockAudio = () => {
+      ensureAudio();
+      window.removeEventListener('click', unlockAudio);
+      window.removeEventListener('keydown', unlockAudio);
+    };
+    window.addEventListener('click', unlockAudio);
+    window.addEventListener('keydown', unlockAudio);
 
     resize();
     window.removeEventListener('resize', resize);
@@ -146,7 +166,7 @@ Game.Engine = (function () {
 
   function brickBaseHp(level) {
     const reduction = 1 - getStatMult('brickHpScaleReduction', 0);
-    return Math.max(5, 8 * Math.pow(level, 1.32) * reduction + level * 2);
+    return Math.max(5, (8 * Math.pow(level, 1.32) + level * 2) * reduction);
   }
 
   function specialTypeForLevel(level) {
@@ -179,9 +199,9 @@ Game.Engine = (function () {
     if (isBossLevel) {
       const bw = cellW * cols * 0.7;
       const bh = brickH * 3;
-      const hp = brickBaseHp(level) * (Game.BRICK_TYPES?.boss?.hpMult || 5);
+      const hp = brickBaseHp(level) * (Game.BRICK_TYPES?.boss?.hpMult || 40);
       bricks.push(makeBrick({
-        x: (W - bw) / 2, y: brickAreaTop, w: bw, h: bh, hp, type: 'boss', row: 0, col: 0
+        x: (W - bw) / 2, y: brickAreaTop + 10, w: bw, h: bh, hp, type: 'boss', row: 0, col: 0
       }));
       return;
     }
@@ -283,7 +303,7 @@ Game.Engine = (function () {
     const s = Game.State.get();
     if (!Game.SKILLS || !s.skills || !s.skills[id]) return 0;
     const def = Game.SKILLS.find(k => k.id === id);
-    return Math.max(0, def.cooldown - (Date.now() - s.skills[id].lastUsed));
+    return Math.max(0, def.cooldown - (Date.now() - (s.skills[id].lastUsed || 0)));
   }
 
   // ---------------- PARTICLES / FLOATING TEXT ----------------
@@ -317,7 +337,6 @@ Game.Engine = (function () {
     const s = Game.State.get();
     let crit = false;
 
-    // Apply crit calculation
     if (!isMeteor && Math.random() < getStatMult('critChance', 0.05)) {
       amount *= getStatMult('critMultiplier', 2);
       crit = true;
@@ -353,7 +372,7 @@ Game.Engine = (function () {
 
     let goldVal = Math.max(1, (brick.maxHp * 0.9) * (1 + (s.level || 1) * 0.02));
     if (brick.type === 'treasure') { 
-      goldVal *= (Game.BRICK_TYPES?.treasure?.goldMult || 3); 
+      goldVal *= (Game.BRICK_TYPES?.treasure?.goldMult || 8); 
       s.stats.treasureBricksDestroyed = (s.stats.treasureBricksDestroyed || 0) + 1; 
     }
     if (brick.type === 'boss') { 
@@ -368,6 +387,7 @@ Game.Engine = (function () {
     gpsAccumulator.gold += gained;
     spawnParticles(hitX, hitY, Game.BRICK_TYPES?.[brick.type]?.color || '#fff', 14);
     spawnFloatingText(hitX, hitY - 10, `+${U.fmt(gained)}g`, '#ffd700', 13);
+    SFX.break();
 
     if (brick.type === 'explosive') {
       const cx = brick.x + brick.w / 2, cy = brick.y + brick.h / 2;
@@ -423,6 +443,7 @@ Game.Engine = (function () {
   function update(dt) {
     const s = Game.State.get();
     const now = Date.now();
+    const extraSlots = Game.State.getExtraSlots ? Game.State.getExtraSlots() : 0;
 
     const ballOrder = Game.BALL_ORDER || Object.keys(s.balls || {});
     ballOrder.forEach((id) => {
@@ -431,7 +452,8 @@ Game.Engine = (function () {
       spawnTimers[id] = (spawnTimers[id] || 0) - dt;
       const activeOfType = activeBalls.filter(a => a.typeId === id && !a.isFragment).length;
       const frenzy = now < (s.frenzyUntil || 0) ? 3 : 1;
-      if (spawnTimers[id] <= 0 && activeOfType < b.count) {
+      const maxCount = b.count + extraSlots;
+      if (spawnTimers[id] <= 0 && activeOfType < maxCount) {
         spawnBall(id);
         spawnTimers[id] = ((SPAWN_BASE_MS[id] || 1000) * getStatMult('fireRateMultiplier', 1)) / frenzy;
       }
