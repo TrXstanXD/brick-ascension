@@ -450,21 +450,19 @@ Game.Engine = (function () {
 
 // Inside update(dt) function in Engine.js:
 const ballOrder = Game.BALL_ORDER || Object.keys(s.balls || {});
-ballOrder.forEach((id) => {
-  const b = s.balls ? s.balls[id] : null;
-  if (!b || !b.unlocked) return;
+    ballOrder.forEach((id) => {
+      const b = s.balls ? s.balls[id] : null;
+      if (!b || !b.unlocked) return;
 
-  spawnTimers[id] = (spawnTimers[id] || 0) - dt;
-  const frenzy = now < (s.frenzyUntil || 0) ? 3 : 1;
+      spawnTimers[id] = (spawnTimers[id] || 0) - dt;
+      const frenzy = now < (s.frenzyUntil || 0) ? 3 : 1;
 
-  // Deploy balls continuously when the spawn timer elapses
-  if (spawnTimers[id] <= 0) {
-    spawnBall(id);
-    const baseRate = SPAWN_BASE_MS[id] || 1000;
-    const rateMult = getStatMult('fireRateMultiplier', 1);
-    spawnTimers[id] = (baseRate * rateMult) / frenzy;
-  }
-});
+      if (spawnTimers[id] <= 0) {
+        spawnBall(id);
+        const deploySec = Game.State.ballDeployRateSec(id);
+        spawnTimers[id] = (deploySec * 1000) / frenzy;
+      }
+    });
 
     bricks.forEach((b) => {
       if (!b.alive) return;
