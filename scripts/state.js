@@ -10,6 +10,8 @@ Game.State = (function () {
     prestigePoints: 0,
     level: 1,
     frenzyUntil: 0,
+    lastSaveTime: 0,
+    lastGpsSample: 0,
     settings: {
       sfxVolume: 0.5,
       musicVolume: 0.5,
@@ -45,7 +47,10 @@ Game.State = (function () {
       sniper: { unlocked: false, level: 1, count: 0, rateLevel: 0 },
       poison: { unlocked: false, level: 1, count: 0, rateLevel: 0 },
       cannon: { unlocked: false, level: 1, count: 0, rateLevel: 0 },
-      scatter: { unlocked: false, level: 1, count: 0, rateLevel: 0 }
+      scatter: { unlocked: false, level: 1, count: 0, rateLevel: 0 },
+      homing: { unlocked: false, level: 1, count: 0, rateLevel: 0 },
+      chain: { unlocked: false, level: 1, count: 0, rateLevel: 0 },
+      void: { unlocked: false, level: 1, count: 0, rateLevel: 0 }
     },
     upgrades: {
       allDamage: 0,
@@ -90,6 +95,7 @@ Game.State = (function () {
 
   function save() {
     try {
+      state.lastSaveTime = Date.now();
       localStorage.setItem('brick_ascension_save', JSON.stringify(state));
       return true;
     } catch (e) {
@@ -158,8 +164,60 @@ Game.State = (function () {
     });
   }
 
+  function offlineMaxHours() {
+    const gemLvl = state.prestigeUpgrades?.gemOffline || 0;
+    return 2 + gemLvl * 2; // 2h base, +2h per Chrono Cache level
+  }
+
+  function offlineEfficiencyMultiplier() {
+    const lvl = state.upgrades?.offlineRate || 0;
+    const bonus = state.bonuses?.offlineMultFlat || 0;
+    // Base 50% efficiency while away, boosted by the Automation Core upgrade & achievement bonuses.
+    return Math.min(1.5, 0.5 + lvl * 0.05 + bonus);
+  }
+
+  let lastOfflineReport = null;
+  function consumeOfflineReport() {
+    const r = lastOfflineReport;
+    lastOfflineReport = null;
+    return r;
+  }
+
+  function applyOfflineProgress() {
+    const now = Date.now();
+    const last = state.lastSaveTime || 0;
+    if (!last) { state.lastSaveTime = now; return; }
+
+    const elapsedMs = now - last;
+    if (elapsedMs < 15000) return; // ignore quick refreshes, nothing meaningful happened
+
+    const cappedMs = Math.min(elapsedMs, offlineMaxHours() * 3600 * 1000);
+    const seconds = cappedMs / 1000;
+
+    const fallbackGps = (5 + (state.level || 1) * 2) * goldMultiplier();
+    const gps = Math.max(state.lastGpsSample || 0, fallbackGps);
+    const efficiency = offlineEfficiencyMultiplier();
+    const gained = Math.max(0, Math.floor(gps * seconds * efficiency));
+
+    if (gained > 0) {
+      state.gold = (state.gold || 0) + gained;
+      state.stats.totalGoldEarned = (state.stats.totalGoldEarned || 0) + gained;
+    }
+
+    lastOfflineReport = {
+      gained,
+      awaySeconds: elapsedMs / 1000,
+      cappedSeconds: seconds,
+      wasCapped: elapsedMs > cappedMs
+    };
+
+    state.lastSaveTime = now;
+  }
+
   function init() {
     load();
+    applyOfflineProgress();
+    save();
   }
 
   // --- MULTIPLIERS ---
@@ -391,6 +449,7 @@ Game.State = (function () {
     getExtraSlots, ballDamage, ballDeployRateSec, upgradeBallDmgCost, upgradeBallCountCost, upgradeBallRateCost,
     buyBallDmgUpgrade, buyBallCountUpgrade, buyBallRateUpgrade, unlockBall,
     getGlobalUpgradeCost, buyGlobalUpgrade, getGemUpgradeCost, buyGemUpgrade,
-    getPrestigeGain, prestige, checkAchievements
+    getPrestigeGain, prestige, checkAchievements,
+    offlineMaxHours, offlineEfficiencyMultiplier, consumeOfflineReport
   };
 })();
