@@ -244,7 +244,7 @@ Game.Engine = (function () {
   }
 
   // ---------------- BALL SPAWNING & SLOTS ----------------
-  const SPAWN_SPREAD_DEG = { basic: 60, plasma: 60, sniper: 30, poison: 60, cannon: 55, scatter: 65 };
+  const SPAWN_SPREAD_DEG = { basic: 60, plasma: 60, sniper: 30, poison: 60, cannon: 55, scatter: 65, homing: 50, chain: 45, void: 35 };
 
   function getActiveCountForType(typeId) {
     let count = 0;
@@ -303,6 +303,16 @@ Game.Engine = (function () {
       vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
       r: 4, damage: Math.max(1, damage), hitSet: null, life: 0, isFragment: true, fragTTL: 4000
     });
+  }
+
+  function findWeakestBrick() {
+    let best = null;
+    for (let i = 0; i < bricks.length; i++) {
+      const b = bricks[i];
+      if (!b.alive) continue;
+      if (!best || b.hp < best.hp) best = b;
+    }
+    return best;
   }
 
   // ---------------- SKILLS ----------------
@@ -369,7 +379,7 @@ Game.Engine = (function () {
   }
 
   // ---------------- DAMAGE & BRICK DESTRUCTION ----------------
-  function damageBrick(brick, amount, hitX, hitY, isMeteor) {
+  function damageBrick(brick, amount, hitX, hitY, isMeteor, ignoreShield) {
     if (!brick.alive) return;
     const s = Game.State.get();
     let crit = false;
@@ -384,7 +394,7 @@ Game.Engine = (function () {
 
     amount = Math.max(1, amount);
 
-    if (brick.type === 'shield' && brick.shieldHits > 0) {
+    if (!ignoreShield && brick.type === 'shield' && brick.shieldHits > 0) {
       brick.shieldHits--;
       spawnFloatingText(hitX, hitY, 'BLOCKED', '#90caf9', 12);
       spawnParticles(hitX, hitY, '#90caf9', 5);
@@ -459,7 +469,39 @@ Game.Engine = (function () {
       brick.shieldHits = 0;
     }
 
-    damageBrick(brick, liveDamage, hitX, hitY);
+    const isVoid = def.behavior === 'void';
+    damageBrick(brick, liveDamage, hitX, hitY, false, isVoid);
+
+    if (isVoid) {
+      const trueDmg = Math.max(1, brick.maxHp * (def.voidPct || 0.05));
+      damageBrick(brick, trueDmg, hitX, hitY, true, true);
+      spawnFloatingText(hitX, hitY - 14, 'VOID', '#b388ff', 12);
+    }
+
+    if (def.behavior === 'chain') {
+      const hitIds = new Set([brick.id]);
+      let fromX = hitX, fromY = hitY;
+      let jumpDmg = liveDamage;
+      const jumps = def.chainJumps || 4;
+      const falloff = def.chainFalloff || 0.7;
+      const radius = def.chainRadius || 140;
+
+      for (let j = 0; j < jumps; j++) {
+        jumpDmg *= falloff;
+        let next = null, nextDist = Infinity;
+        bricks.forEach((b) => {
+          if (!b.alive || hitIds.has(b.id)) return;
+          const bx = b.x + b.w / 2, by = b.y + b.h / 2;
+          const d = Math.hypot(bx - fromX, by - fromY);
+          if (d < radius && d < nextDist) { next = b; nextDist = d; }
+        });
+        if (!next) break;
+        hitIds.add(next.id);
+        const bx = next.x + next.w / 2, by = next.y + next.h / 2;
+        damageBrick(next, jumpDmg, bx, by);
+        fromX = bx; fromY = by;
+      }
+    }
 
     if (def.behavior === 'splash') {
       const radius = def.splashRadius || 60;
@@ -550,6 +592,21 @@ Game.Engine = (function () {
         ball.vy += ball.vy < 0 ? -1 : 1;
       }
 
+      // Homing balls gently steer toward the weakest alive brick on the field.
+      if (ball.typeId === 'homing' && !ball.isFragment) {
+        const target = findWeakestBrick();
+        if (target) {
+          const tx = target.x + target.w / 2, ty = target.y + target.h / 2;
+          const dx = tx - ball.x, dy = ty - ball.y;
+          const dist = Math.hypot(dx, dy) || 1;
+          const speed = Math.hypot(ball.vx, ball.vy) || 1;
+          const desiredVx = (dx / dist) * speed, desiredVy = (dy / dist) * speed;
+          const turnRate = (Game.BALL_TYPES?.homing?.turnRate) || 0.09;
+          ball.vx = U.lerp(ball.vx, desiredVx, turnRate);
+          ball.vy = U.lerp(ball.vy, desiredVy, turnRate);
+        }
+      }
+
       ball.x += ball.vx * (dt / 16.6);
       ball.y += ball.vy * (dt / 16.6);
 
@@ -605,6 +662,7 @@ Game.Engine = (function () {
     gpsAccumulator.time += dt;
     if (gpsAccumulator.time > 3000) {
       Game._lastGpsSample = gpsAccumulator.gold / (gpsAccumulator.time / 1000);
+      if (s) s.lastGpsSample = Game._lastGpsSample;
       gpsAccumulator = { gold: 0, time: 0 };
     }
 
