@@ -402,14 +402,18 @@ Game.Engine = (function () {
   }
 
   // ---------------- COLLISION HANDLING ----------------
+// ---------------- COLLISION HANDLING ----------------
   function handleBallBrickHit(ball, brick) {
     const def = (Game.BALL_TYPES && Game.BALL_TYPES[ball.typeId]) ? Game.BALL_TYPES[ball.typeId] : { behavior: 'basic' };
     const hitX = ball.x, hitY = ball.y;
 
+    // Fetch the live damage directly from State whenever the ball hits a brick
+    const liveDamage = calculateBallDamage(ball.typeId);
+
     if (def.behavior === 'pierce') {
       if (ball.hitSet.has(brick.id)) return false;
       ball.hitSet.add(brick.id);
-      damageBrick(brick, ball.damage, hitX, hitY);
+      damageBrick(brick, liveDamage, hitX, hitY);
       return false;
     }
 
@@ -417,7 +421,7 @@ Game.Engine = (function () {
       brick.shieldHits = 0;
     }
 
-    damageBrick(brick, ball.damage, hitX, hitY);
+    damageBrick(brick, liveDamage, hitX, hitY);
 
     if (def.behavior === 'splash') {
       const radius = def.splashRadius || 60;
@@ -425,7 +429,7 @@ Game.Engine = (function () {
         if (!b.alive || b === brick) return;
         const bx = b.x + b.w / 2, by = b.y + b.h / 2;
         const d = Math.hypot(bx - hitX, by - hitY);
-        if (d < radius) damageBrick(b, ball.damage * (def.splashFalloff || 0.5), bx, by);
+        if (d < radius) damageBrick(b, liveDamage * (def.splashFalloff || 0.5), bx, by);
       });
     }
     if (def.behavior === 'poison') {
@@ -434,11 +438,10 @@ Game.Engine = (function () {
     }
     if (def.behavior === 'scatter' && !ball.isFragment) {
       const frags = def.fragments || 3;
-      for (let i = 0; i < frags; i++) spawnFragment(hitX, hitY, ball.damage * 0.4);
+      for (let i = 0; i < frags; i++) spawnFragment(hitX, hitY, liveDamage * 0.4);
     }
     return true;
   }
-
   // ---------------- UPDATE LOOP ----------------
   function update(dt) {
     const s = Game.State.get();
