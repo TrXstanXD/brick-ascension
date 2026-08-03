@@ -125,6 +125,33 @@ Game.UI = (function () {
     restartAutosaveTimer();
   }
 
+  function renderSkills() {
+    const listEl = document.querySelector('#skills-list');
+    if (!listEl) return;
+
+    const s = Game.State.get();
+    const skills = Game.SKILLS || [];
+    let html = '';
+
+    skills.forEach((sk) => {
+      const locked = (s.level || 1) < sk.unlockLevel;
+      const cdRemain = Game.Engine?.skillCooldownRemaining ? Game.Engine.skillCooldownRemaining(sk.id) : 0;
+      const ready = !locked && cdRemain <= 0;
+      const cdText = locked ? `Unlocks Lv.${sk.unlockLevel}` : (ready ? 'READY' : `${Math.ceil(cdRemain / 1000)}s`);
+
+      html += `
+        <button class="skill-btn ${locked ? 'locked' : ''} ${ready ? 'ready' : ''}"
+                data-action="use-skill" data-id="${sk.id}"
+                ${(locked || !ready) ? 'disabled' : ''} title="${sk.desc}">
+          <div class="skill-name">${sk.name}</div>
+          <div class="skill-cd">${cdText}</div>
+        </button>
+      `;
+    });
+
+    listEl.innerHTML = html;
+  }
+
   function renderUpgrades() {
     const listEl = document.querySelector('#upgrades-list');
     if (!listEl) return;
@@ -384,6 +411,7 @@ Game.UI = (function () {
 
       renderHeader();
       renderActiveTab();
+      renderSkills();
     });
 
     const prestigeBtn = document.querySelector('#prestige-btn');
@@ -406,6 +434,7 @@ Game.UI = (function () {
             showToast('ASCENSION', `Ascended for +${gain} Gems!`, true);
             renderHeader();
             renderActiveTab();
+            renderSkills();
           }
         }
       };
@@ -458,6 +487,7 @@ Game.UI = (function () {
             restartAutosaveTimer();
             renderHeader();
             renderActiveTab();
+            renderSkills();
           } else {
             alert('Failed to parse save file!');
           }
@@ -479,6 +509,7 @@ Game.UI = (function () {
           restartAutosaveTimer();
           renderHeader();
           renderActiveTab();
+          renderSkills();
         } else {
           alert('Invalid save code!');
         }
@@ -498,6 +529,7 @@ Game.UI = (function () {
           restartAutosaveTimer();
           renderHeader();
           renderActiveTab();
+          renderSkills();
         }
       };
     }
@@ -507,10 +539,12 @@ Game.UI = (function () {
     bindEvents();
     renderHeader();
     renderActiveTab();
-    
+    renderSkills();
+
     setInterval(() => {
       renderHeader();
       renderActiveTab();
+      renderSkills();
     }, 250);
   }
 
@@ -518,6 +552,8 @@ Game.UI = (function () {
     init,
     renderHeader,
     renderBalls,
-    renderActiveTab
+    renderActiveTab,
+    renderSkills,
+    showToast
   };
 })();
