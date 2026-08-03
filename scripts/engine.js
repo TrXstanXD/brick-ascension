@@ -2,6 +2,8 @@
 // ENGINE.JS - Updated Spawning Logic & Collision Engine
 // ============================================================
 
+const spawnIntervals = {};
+
 function getActiveCountForType(typeId) {
   let count = 0;
   for (let i = 0; i < activeBalls.length; i++) {
@@ -10,6 +12,22 @@ function getActiveCountForType(typeId) {
     }
   }
   return count;
+}
+
+function getSpawnProgress(typeId) {
+  const remainingMs = spawnTimers[typeId] || 0;
+  const totalMs = spawnIntervals[typeId] || (Game.State.ballDeployRateSec(typeId) * 1000);
+  
+  if (totalMs <= 0) return { pct: 100, remainingSec: 0 };
+
+  const elapsed = totalMs - remainingMs;
+  const pct = (elapsed / totalMs) * 100;
+  const remainingSec = Math.max(0, remainingMs / 1000);
+
+  return {
+    pct: Math.min(100, Math.max(0, pct)),
+    remainingSec: remainingSec
+  };
 }
 
 function update(dt) {
@@ -27,15 +45,22 @@ function update(dt) {
     const maxAllowed = (b.count || 0) + extraSlots;
     const currentOnScreen = getActiveCountForType(id);
 
+    const deploySec = Game.State.ballDeployRateSec(id);
+    const frenzy = now < (s.frenzyUntil || 0) ? 3 : 1;
+    const targetInterval = (deploySec * 1000) / frenzy;
+    spawnIntervals[id] = targetInterval;
+
+    if (spawnTimers[id] === undefined) {
+      spawnTimers[id] = targetInterval;
+    }
+
     // Only progress deployment timer if screen capacity has room
     if (currentOnScreen < maxAllowed) {
-      spawnTimers[id] = (spawnTimers[id] || 0) - dt;
-      const frenzy = now < (s.frenzyUntil || 0) ? 3 : 1;
+      spawnTimers[id] -= dt;
 
       if (spawnTimers[id] <= 0) {
         spawnBall(id);
-        const deploySec = Game.State.ballDeployRateSec(id);
-        spawnTimers[id] = (deploySec * 1000) / frenzy;
+        spawnTimers[id] = targetInterval;
       }
     }
   });
@@ -139,7 +164,8 @@ function update(dt) {
   }
 }
 
-// Expose helper to global Engine object for UI synchronization
+// Expose helpers to global Engine object for UI synchronization
 if (window.Game && window.Game.Engine) {
   window.Game.Engine.getActiveCountForType = getActiveCountForType;
+  window.Game.Engine.getSpawnProgress = getSpawnProgress;
 }
