@@ -52,13 +52,14 @@ Game.Engine = (function () {
     const def = Game.BALL_TYPES ? Game.BALL_TYPES[typeId] : null;
     if (!def) return;
 
+    // Launch UPWARD (-y) from the bottom of the canvas into the bricks
     const angle = Game.Util.rand(-Math.PI * 0.75, -Math.PI * 0.25);
     const speed = def.speed || 6;
 
     activeBalls.push({
       typeId: typeId,
       x: W / 2,
-      y: 80,
+      y: H - 40,
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed,
       r: 8,
@@ -98,7 +99,7 @@ Game.Engine = (function () {
 
         bricks.push({
           x: padding + c * (brickW + padding),
-          y: 120 + r * (brickH + padding),
+          y: 80 + r * (brickH + padding),
           w: brickW,
           h: brickH,
           hp: hp,
@@ -165,7 +166,7 @@ Game.Engine = (function () {
       });
     }
 
-    return true; // Should bounce
+    return true;
   }
 
   function newLevel(advance = true) {
@@ -234,7 +235,7 @@ Game.Engine = (function () {
       }
     });
 
-    // --- BALL MOVEMENT & BOTTOM COLLISION ---
+    // --- BALL MOVEMENT & COLLISION ---
     for (let i = activeBalls.length - 1; i >= 0; i--) {
       const ball = activeBalls[i];
       ball.life += dt;
@@ -247,15 +248,20 @@ Game.Engine = (function () {
         }
       }
 
+      // Anti-stuck horizontal angle fix
+      if (Math.abs(ball.vy) < 0.5) {
+        ball.vy += ball.vy < 0 ? -1 : 1;
+      }
+
       ball.x += ball.vx * (dt / 16.6);
       ball.y += ball.vy * (dt / 16.6);
 
-      // Canvas boundary bounces
+      // Canvas boundary bounces (Left, Right, Top)
       if (ball.x - ball.r < 0) { ball.x = ball.r; ball.vx *= -1; }
       if (ball.x + ball.r > W) { ball.x = W - ball.r; ball.vx *= -1; }
       if (ball.y - ball.r < 0) { ball.y = ball.r; ball.vy *= -1; }
 
-      // Reaching the bottom boundary clears the ball and opens up a slot to respawn
+      // Bottom boundary despawns ball to free up slot
       if (ball.y - ball.r > H) { 
         activeBalls.splice(i, 1); 
         continue; 
